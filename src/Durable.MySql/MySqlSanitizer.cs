@@ -177,6 +177,7 @@ namespace Durable.MySql
                 DateTimeOffset dto => SanitizeString(dto.ToString("yyyy-MM-dd HH:mm:ss.fffffff", CultureInfo.InvariantCulture)),
                 TimeSpan ts => SanitizeString(ts.ToString()),
                 char c => SanitizeString(c.ToString()),
+                byte[] bytes => $"X'{Convert.ToHexString(bytes)}'", // hex literal for binary columns
                 _ when !RequiresSanitization(value) => value.ToString() ?? "NULL",
                 _ => SanitizeString(value.ToString() ?? "")
             };
