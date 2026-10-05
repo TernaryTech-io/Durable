@@ -5,6 +5,7 @@ namespace Durable.SqlServer
     using System.Text;
     using System.Text.RegularExpressions;
     using Durable;
+    using Durable.Metadata;
 
     /// <summary>
     /// SQL Server-specific implementation of ISanitizer that provides secure sanitization
@@ -13,6 +14,24 @@ namespace Durable.SqlServer
     /// </summary>
     public class SqlServerSanitizer : ISanitizer
     {
+
+        #region Metadata
+
+        /// <summary>
+        /// Gets the metadata provider used to resolve property mapping hints.
+        /// </summary>
+        public IEntityMetadataProvider MetadataProvider { get; }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="SqlServerSanitizer"/> class.
+        /// </summary>
+        /// <param name="metadataProvider">The metadata provider used to resolve property mapping hints. Defaults to <see cref="DurableConfiguration.DefaultMetadataProvider"/>.</param>
+        public SqlServerSanitizer(IEntityMetadataProvider? metadataProvider = null)
+        {
+            MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
+        }
+
+        #endregion
 
         #region Public-Members
 
@@ -170,7 +189,7 @@ namespace Durable.SqlServer
             // Handle enums - check if they should be stored as integers or strings
             if (value is Enum enumValue)
             {
-                PropertyAttribute? attr = propertyInfo?.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = MetadataProvider.GetColumn(propertyInfo);
                 if (attr != null && (attr.PropertyFlags & Flags.String) != Flags.String)
                 {
                     // Store as integer if String flag is NOT set

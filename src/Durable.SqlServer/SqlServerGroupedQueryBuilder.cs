@@ -12,6 +12,7 @@ namespace Durable.SqlServer
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
+    using Durable.Metadata;
 
     /// <summary>
     /// Advanced grouped query builder for MySQL with EntityMapper integration.
@@ -1072,7 +1073,7 @@ namespace Durable.SqlServer
             if (expression is MemberExpression memberExpr)
             {
                 PropertyInfo property = (PropertyInfo)memberExpr.Member;
-                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _Repository._MetadataProvider.GetColumn(property);
                 return attr?.Name ?? property.Name;
             }
 

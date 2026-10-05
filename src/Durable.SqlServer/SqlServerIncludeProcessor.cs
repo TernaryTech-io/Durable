@@ -4,6 +4,7 @@ namespace Durable.SqlServer
     using System.Collections.Generic;
     using System.Linq;
     using System.Reflection;
+    using Durable.Metadata;
 
     /// <summary>
     /// Processes Include expressions and builds navigation property metadata for MySQL queries.
@@ -20,6 +21,7 @@ namespace Durable.SqlServer
         private readonly Dictionary<Type, string> _TableNameCache = new Dictionary<Type, string>();
         private readonly Dictionary<Type, Dictionary<string, PropertyInfo>> _ColumnMappingCache = new Dictionary<Type, Dictionary<string, PropertyInfo>>();
         private readonly ISanitizer _Sanitizer;
+        private readonly IEntityMetadataProvider _MetadataProvider;
         private readonly SqlServerIncludeValidator _IncludeValidator;
         private int _AliasCounter = 0;
 
@@ -31,10 +33,12 @@ namespace Durable.SqlServer
         /// Initializes a new instance of the SqlServerIncludeProcessor class.
         /// </summary>
         /// <param name="sanitizer">The sanitizer to use for SQL identifiers</param>
+        /// <param name="metadataProvider">The entity metadata provider.</param>
         /// <param name="maxIncludeDepth">Maximum depth for nested includes to prevent infinite recursion. Default is 5</param>
         /// <exception cref="ArgumentNullException">Thrown when sanitizer is null</exception>
-        public SqlServerIncludeProcessor(ISanitizer sanitizer, int maxIncludeDepth = 5)
+        public SqlServerIncludeProcessor(ISanitizer sanitizer, IEntityMetadataProvider metadataProvider, int maxIncludeDepth = 5)
         {
+            _MetadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
             _Sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
             _IncludeValidator = new SqlServerIncludeValidator(maxIncludeDepth);
         }
@@ -125,7 +129,7 @@ namespace Durable.SqlServer
 
             foreach (PropertyInfo property in properties)
             {
-                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
                 if (attr != null && !string.IsNullOrWhiteSpace(attr.Name))
                 {
                     columnMappings[attr.Name] = property;
@@ -153,7 +157,7 @@ namespace Durable.SqlServer
                 return cached;
             }
 
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null || string.IsNullOrWhiteSpace(entityAttr.Name))
             {
                 throw new InvalidOperationException($"Entity type {entityType.Name} must have an EntityAttribute with a valid Name");
@@ -201,7 +205,7 @@ namespace Durable.SqlServer
         private void SetupRelationshipInfo(SqlServerIncludeInfo includeInfo, Type parentType, PropertyInfo navigationProperty)
         {
             // Check for ForeignKey attribute
-            ForeignKeyAttribute? foreignKeyAttr = navigationProperty.GetCustomAttribute<ForeignKeyAttribute>();
+            ForeignKeyAttribute? foreignKeyAttr = _MetadataProvider.GetForeignKey(navigationProperty);
             if (foreignKeyAttr != null)
             {
                 PropertyInfo? foreignKeyProperty = parentType.GetProperty(foreignKeyAttr.ReferencedProperty);
@@ -212,7 +216,7 @@ namespace Durable.SqlServer
             }
 
             // Check for ManyToMany attribute
-            ManyToManyNavigationPropertyAttribute? manyToManyAttr = navigationProperty.GetCustomAttribute<ManyToManyNavigationPropertyAttribute>();
+            ManyToManyNavigationPropertyAttribute? manyToManyAttr = _MetadataProvider.GetManyToMany(navigationProperty);
             if (manyToManyAttr != null)
             {
                 includeInfo.IsManyToMany = true;
@@ -227,7 +231,7 @@ namespace Durable.SqlServer
             }
 
             // Check for NavigationProperty attribute
-            NavigationPropertyAttribute? navPropAttr = navigationProperty.GetCustomAttribute<NavigationPropertyAttribute>();
+            NavigationPropertyAttribute? navPropAttr = _MetadataProvider.GetNavigation(navigationProperty);
             if (navPropAttr != null && !string.IsNullOrEmpty(navPropAttr.ForeignKeyProperty))
             {
                 PropertyInfo? foreignKeyProperty = parentType.GetProperty(navPropAttr.ForeignKeyProperty);
@@ -238,7 +242,7 @@ namespace Durable.SqlServer
             }
 
             // Check for InverseNavigationProperty attribute (indicates collection navigation)
-            InverseNavigationPropertyAttribute? inverseAttr = navigationProperty.GetCustomAttribute<InverseNavigationPropertyAttribute>();
+            InverseNavigationPropertyAttribute? inverseAttr = _MetadataProvider.GetInverseNavigation(navigationProperty);
             if (inverseAttr != null)
             {
                 includeInfo.IsCollection = true;
@@ -252,7 +256,7 @@ namespace Durable.SqlServer
                     throw new InvalidOperationException($"Inverse foreign key property '{inverseAttr.InverseForeignKeyProperty}' not found on type '{relatedEntityType.Name}'");
                 }
 
-                ForeignKeyAttribute? fkAttr = inverseForeignKeyProperty.GetCustomAttribute<ForeignKeyAttribute>();
+                ForeignKeyAttribute? fkAttr = _MetadataProvider.GetForeignKey(inverseForeignKeyProperty);
                 if (fkAttr == null)
                 {
                     throw new InvalidOperationException($"Inverse foreign key property '{inverseAttr.InverseForeignKeyProperty}' is not marked with ForeignKeyAttribute");

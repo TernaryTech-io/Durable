@@ -7,6 +7,7 @@ namespace Durable.SqlServer
     using System.Reflection;
     using System.Text.Json;
     using Durable;
+    using Durable.Metadata;
 
     /// <summary>
     /// SQL Server-specific data type converter that maintains type fidelity for SQL Server parameter binding.
@@ -14,6 +15,24 @@ namespace Durable.SqlServer
     /// </summary>
     public class SqlServerDataTypeConverter : IDataTypeConverter
     {
+
+        #region Metadata
+
+        /// <summary>
+        /// Gets the metadata provider used to resolve property mapping hints.
+        /// </summary>
+        public IEntityMetadataProvider MetadataProvider { get; }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="SqlServerDataTypeConverter"/> class.
+        /// </summary>
+        /// <param name="metadataProvider">The metadata provider used to resolve property mapping hints. Defaults to <see cref="DurableConfiguration.DefaultMetadataProvider"/>.</param>
+        public SqlServerDataTypeConverter(IEntityMetadataProvider? metadataProvider = null)
+        {
+            MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
+        }
+
+        #endregion
 
         #region Private-Members
 
@@ -95,7 +114,7 @@ namespace Durable.SqlServer
             if (valueType.IsEnum)
             {
                 // Check for PropertyAttribute flags to determine storage preference
-                PropertyAttribute? attr = propertyInfo?.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = MetadataProvider.GetColumn(propertyInfo);
                 if (attr != null && (attr.PropertyFlags & Flags.String) != Flags.String)
                 {
                     // If String flag is NOT set, store as integer
@@ -309,7 +328,7 @@ namespace Durable.SqlServer
             type = Nullable.GetUnderlyingType(type) ?? type;
 
             // Check for PropertyAttribute
-            PropertyAttribute? attr = propertyInfo?.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute? attr = MetadataProvider.GetColumn(propertyInfo);
 
             // SQL Server type mappings
             if (type == typeof(bool))

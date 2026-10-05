@@ -8,6 +8,7 @@ namespace Durable.SqlServer
     using System.Reflection;
     using System.Threading;
     using System.Threading.Tasks;
+    using Durable.Metadata;
 
     /// <summary>
     /// Advanced entity mapping capabilities for SQL Server data readers.
@@ -17,6 +18,8 @@ namespace Durable.SqlServer
     /// <typeparam name="T">The primary entity type being mapped</typeparam>
     internal class SqlServerEntityMapper<T> where T : class, new()
     {
+        private readonly IEntityMetadataProvider _MetadataProvider;
+
         #region Public-Members
 
         #endregion
@@ -38,12 +41,15 @@ namespace Durable.SqlServer
         /// <param name="dataTypeConverter">The data type converter for handling complex type conversions</param>
         /// <param name="baseColumnMappings">Column mappings for the primary entity type</param>
         /// <param name="sanitizer">The sanitizer for handling SQL values and identifiers</param>
+        /// <param name="metadataProvider">The entity metadata provider.</param>
         /// <exception cref="ArgumentNullException">Thrown when any required parameter is null</exception>
         public SqlServerEntityMapper(
             IDataTypeConverter dataTypeConverter,
             Dictionary<string, PropertyInfo> baseColumnMappings,
-            ISanitizer sanitizer)
+            ISanitizer sanitizer,
+            IEntityMetadataProvider metadataProvider)
         {
+            _MetadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
             _DataTypeConverter = dataTypeConverter ?? throw new ArgumentNullException(nameof(dataTypeConverter));
             _BaseColumnMappings = baseColumnMappings ?? throw new ArgumentNullException(nameof(baseColumnMappings));
             _Sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
@@ -515,7 +521,7 @@ namespace Durable.SqlServer
             // Find the primary key property and use its value as the entity key
             foreach (KeyValuePair<string, PropertyInfo> kvp in _BaseColumnMappings)
             {
-                PropertyAttribute? attr = kvp.Value.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _MetadataProvider.GetColumn(kvp.Value);
                 if (attr != null && (attr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey)
                 {
                     object? keyValue = kvp.Value.GetValue(entity);
@@ -607,7 +613,7 @@ namespace Durable.SqlServer
             // Find the primary key property for the specified type
             foreach (PropertyInfo prop in entityType.GetProperties())
             {
-                PropertyAttribute? attr = prop.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _MetadataProvider.GetColumn(prop);
                 if (attr != null && (attr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey)
                 {
                     object? keyValue = prop.GetValue(entity);

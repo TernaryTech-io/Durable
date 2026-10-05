@@ -14,6 +14,7 @@ namespace Durable.SqlServer
     using Microsoft.Data.SqlClient;
     using Durable.ConcurrencyConflictResolvers;
     using Durable.DefaultValueProviders;
+    using Durable.Metadata;
 
     /// <summary>
     /// SQL Server Repository Implementation with Full Transaction Support and Connection Pooling.
@@ -111,6 +112,7 @@ namespace Durable.SqlServer
         internal readonly IBatchInsertConfiguration _BatchConfig;
         internal readonly ISanitizer _Sanitizer;
         internal readonly IDataTypeConverter _DataTypeConverter;
+        internal readonly IEntityMetadataProvider _MetadataProvider;
         internal readonly VersionColumnInfo? _VersionColumnInfo;
         internal readonly IConcurrencyConflictResolver<T> _ConflictResolver;
         internal readonly IChangeTracker<T> _ChangeTracker;
@@ -134,16 +136,18 @@ namespace Durable.SqlServer
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
+        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when connectionString is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
-        public SqlServerRepository(string connectionString, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null)
+        public SqlServerRepository(string connectionString, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
         {
             ArgumentNullException.ThrowIfNull(connectionString);
             Settings = SqlServerRepositorySettings.Parse(connectionString);
             _ConnectionFactory = new SqlServerConnectionFactory(connectionString);
             _OwnsConnectionFactory = true; // We created this factory, so we own it
-            _Sanitizer = new SqlServerSanitizer();
-            _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter();
+            _Sanitizer = new SqlServerSanitizer(metadataProvider);
+            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
+            _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -166,17 +170,19 @@ namespace Durable.SqlServer
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
+        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when settings is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key), or when settings are invalid.</exception>
-        public SqlServerRepository(SqlServerRepositorySettings settings, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null)
+        public SqlServerRepository(SqlServerRepositorySettings settings, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
         {
             ArgumentNullException.ThrowIfNull(settings);
             Settings = settings;
             string connectionString = settings.BuildConnectionString();
             _ConnectionFactory = new SqlServerConnectionFactory(connectionString);
             _OwnsConnectionFactory = true; // We created this factory, so we own it
-            _Sanitizer = new SqlServerSanitizer();
-            _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter();
+            _Sanitizer = new SqlServerSanitizer(metadataProvider);
+            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
+            _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -200,15 +206,17 @@ namespace Durable.SqlServer
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
+        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when connectionFactory is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
-        public SqlServerRepository(IConnectionFactory connectionFactory, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null)
+        public SqlServerRepository(IConnectionFactory connectionFactory, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
         {
             _ConnectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
             _OwnsConnectionFactory = false; // External factory, we don't own it
             Settings = null!;
-            _Sanitizer = new SqlServerSanitizer();
-            _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter();
+            _Sanitizer = new SqlServerSanitizer(metadataProvider);
+            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
+            _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -528,7 +536,7 @@ namespace Durable.SqlServer
         /// <returns>The table name</returns>
         public string GetEntityName()
         {
-            EntityAttribute? entityAttr = typeof(T).GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(typeof(T));
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type {typeof(T).Name} must be decorated with [Entity] attribute");
             return entityAttr.Name;
@@ -538,12 +546,12 @@ namespace Durable.SqlServer
         {
             PropertyInfo[] properties = typeof(T).GetProperties();
             PropertyInfo? pkProperty = properties.FirstOrDefault(p =>
-                p.GetCustomAttribute<PropertyAttribute>()?.PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
+                _MetadataProvider.GetColumn(p)?.PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
 
             if (pkProperty == null)
                 throw new InvalidOperationException($"Type {typeof(T).Name} must have a property with [Property] attribute and PrimaryKey flag");
 
-            PropertyAttribute? attr = pkProperty.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute? attr = _MetadataProvider.GetColumn(pkProperty);
             return new PrimaryKeyInfo(attr!.Name, pkProperty);
         }
 
@@ -558,7 +566,7 @@ namespace Durable.SqlServer
 
             foreach (PropertyInfo property in properties)
             {
-                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
                 if (attr != null)
                 {
                     mappings[attr.Name] = property;
@@ -579,7 +587,7 @@ namespace Durable.SqlServer
 
             foreach (PropertyInfo property in properties)
             {
-                ForeignKeyAttribute? attr = property.GetCustomAttribute<ForeignKeyAttribute>();
+                ForeignKeyAttribute? attr = _MetadataProvider.GetForeignKey(property);
                 if (attr != null)
                 {
                     foreignKeys[property] = attr;
@@ -600,7 +608,7 @@ namespace Durable.SqlServer
 
             foreach (PropertyInfo property in properties)
             {
-                NavigationPropertyAttribute? attr = property.GetCustomAttribute<NavigationPropertyAttribute>();
+                NavigationPropertyAttribute? attr = _MetadataProvider.GetNavigation(property);
                 if (attr != null)
                 {
                     navigationProps[property] = attr;
@@ -619,10 +627,10 @@ namespace Durable.SqlServer
             PropertyInfo[] properties = typeof(T).GetProperties();
             foreach (PropertyInfo property in properties)
             {
-                VersionColumnAttribute? attr = property.GetCustomAttribute<VersionColumnAttribute>();
+                VersionColumnAttribute? attr = _MetadataProvider.GetVersionColumn(property);
                 if (attr != null)
                 {
-                    PropertyAttribute? propAttr = property.GetCustomAttribute<PropertyAttribute>();
+                    PropertyAttribute? propAttr = _MetadataProvider.GetColumn(property);
                     if (propAttr == null)
                         throw new InvalidOperationException($"Version column property {property.Name} must have [Property] attribute");
 
@@ -650,7 +658,7 @@ namespace Durable.SqlServer
 
             foreach (PropertyInfo property in properties)
             {
-                DefaultValueAttribute? attr = property.GetCustomAttribute<DefaultValueAttribute>();
+                DefaultValueAttribute? attr = _MetadataProvider.GetDefaultValue(property);
                 if (attr != null)
                 {
                     IDefaultValueProvider provider;
@@ -701,7 +709,7 @@ namespace Durable.SqlServer
                 PropertyInfo property = mapping.Value;
 
                 // Skip auto-increment primary keys
-                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
                 if (attr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true)
                     continue;
 
@@ -1800,7 +1808,7 @@ namespace Durable.SqlServer
                 PropertyInfo property = kvp.Value;
 
                 // Skip auto-increment primary keys
-                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
                 if (attr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true)
                     continue;
 
@@ -1812,7 +1820,7 @@ namespace Durable.SqlServer
             string insertSql = $"INSERT INTO [{_TableName}] ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.name))})";
 
             // Check if we have an auto-increment primary key
-            PropertyAttribute? pkAttr = _PrimaryKeyProperty.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
             bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
 
             if (hasAutoIncrement)
@@ -1958,7 +1966,7 @@ namespace Durable.SqlServer
                 PropertyInfo property = kvp.Value;
 
                 // Skip auto-increment primary keys
-                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
                 if (attr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true)
                     continue;
 
@@ -1970,7 +1978,7 @@ namespace Durable.SqlServer
             string insertSql = $"INSERT INTO [{_TableName}] ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.name))})";
 
             // Check if we have an auto-increment primary key
-            PropertyAttribute? pkAttr = _PrimaryKeyProperty.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
             bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
 
             if (hasAutoIncrement)
@@ -3101,7 +3109,7 @@ namespace Durable.SqlServer
                 string columnName = kvp.Key;
                 PropertyInfo property = kvp.Value;
                 object? value = property.GetValue(entity);
-                PropertyAttribute? columnAttr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? columnAttr = _MetadataProvider.GetColumn(property);
 
                 bool isAutoIncrementPK = columnAttr != null &&
                     (columnAttr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey &&
@@ -3303,7 +3311,7 @@ namespace Durable.SqlServer
                 string columnName = kvp.Key;
                 PropertyInfo property = kvp.Value;
                 object? value = property.GetValue(entity);
-                PropertyAttribute? columnAttr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? columnAttr = _MetadataProvider.GetColumn(property);
 
                 bool isAutoIncrementPK = columnAttr != null &&
                     (columnAttr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey &&
@@ -4061,7 +4069,7 @@ namespace Durable.SqlServer
             {
                 string columnName = kvp.Key;
                 PropertyInfo property = kvp.Value;
-                PropertyAttribute? columnAttr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? columnAttr = _MetadataProvider.GetColumn(property);
 
                 if (columnAttr != null &&
                     (columnAttr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey &&
@@ -4111,7 +4119,7 @@ namespace Durable.SqlServer
             }
 
             // Check if we need to output auto-generated IDs
-            PropertyAttribute? pkAttr = _PrimaryKeyProperty?.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
             bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
 
             if (hasAutoIncrement)
@@ -4169,7 +4177,7 @@ namespace Durable.SqlServer
                 // If primary key is auto-increment, we need to use ExecuteReader to get the OUTPUT results
                 if (_PrimaryKeyProperty != null)
                 {
-                    PropertyAttribute? pkAttr = _PrimaryKeyProperty.GetCustomAttribute<PropertyAttribute>();
+                    PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
                     bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
 
                     if (hasAutoIncrement)
@@ -4231,7 +4239,7 @@ namespace Durable.SqlServer
                 // If primary key is auto-increment, we need to use ExecuteReader to get the OUTPUT results
                 if (_PrimaryKeyProperty != null)
                 {
-                    PropertyAttribute? pkAttr = _PrimaryKeyProperty.GetCustomAttribute<PropertyAttribute>();
+                    PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
                     bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
 
                     if (hasAutoIncrement)
@@ -4466,7 +4474,7 @@ namespace Durable.SqlServer
             }
 
             // Get table name
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             string tableName = entityAttr!.Name; // Already validated in ValidateTable
 
             // Check if table exists
@@ -4488,7 +4496,7 @@ namespace Durable.SqlServer
             if (!tableExists)
             {
                 // Create the table
-                SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter);
+                SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
                 string createTableSql = schemaBuilder.BuildCreateTableSql(entityType);
 
                 if (transaction != null)
@@ -4541,7 +4549,7 @@ namespace Durable.SqlServer
             }
 
             // Get table name
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             string tableName = entityAttr!.Name; // Already validated in ValidateTable
 
             // Check if table exists
@@ -4563,7 +4571,7 @@ namespace Durable.SqlServer
             if (!tableExists)
             {
                 // Create the table
-                SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter);
+                SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
                 string createTableSql = schemaBuilder.BuildCreateTableSql(entityType);
 
                 if (transaction != null)
@@ -4705,7 +4713,7 @@ namespace Durable.SqlServer
             }
 
             // Check for Entity attribute
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null)
             {
                 errors.Add($"Type '{entityType.Name}' must have an [Entity] attribute");
@@ -4715,7 +4723,7 @@ namespace Durable.SqlServer
             // Check for at least one property with Property attribute
             PropertyInfo[] properties = entityType.GetProperties();
             List<PropertyInfo> mappedProperties = properties
-                .Where(p => p.GetCustomAttribute<PropertyAttribute>() != null)
+                .Where(p => _MetadataProvider.GetColumn(p) != null)
                 .ToList();
 
             if (mappedProperties.Count == 0)
@@ -4726,7 +4734,7 @@ namespace Durable.SqlServer
 
             // Check for primary key
             PropertyInfo? primaryKeyProperty = mappedProperties
-                .FirstOrDefault(p => p.GetCustomAttribute<PropertyAttribute>()?.PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
+                .FirstOrDefault(p => _MetadataProvider.GetColumn(p)?.PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
 
             if (primaryKeyProperty == null)
             {
@@ -4737,11 +4745,11 @@ namespace Durable.SqlServer
             // Validate foreign keys
             foreach (PropertyInfo property in mappedProperties)
             {
-                ForeignKeyAttribute? fkAttr = property.GetCustomAttribute<ForeignKeyAttribute>();
+                ForeignKeyAttribute? fkAttr = _MetadataProvider.GetForeignKey(property);
                 if (fkAttr != null)
                 {
                     // Check that referenced type has Entity attribute
-                    EntityAttribute? refEntityAttr = fkAttr.ReferencedType.GetCustomAttribute<EntityAttribute>();
+                    EntityAttribute? refEntityAttr = _MetadataProvider.GetEntity(fkAttr.ReferencedType);
                     if (refEntityAttr == null)
                     {
                         errors.Add($"Foreign key on property '{property.Name}' references type '{fkAttr.ReferencedType.Name}' which does not have an [Entity] attribute");
@@ -4756,7 +4764,7 @@ namespace Durable.SqlServer
                     else
                     {
                         // Check that referenced property has Property attribute
-                        PropertyAttribute? refPropAttr = refProperty.GetCustomAttribute<PropertyAttribute>();
+                        PropertyAttribute? refPropAttr = _MetadataProvider.GetColumn(refProperty);
                         if (refPropAttr == null)
                         {
                             errors.Add($"Foreign key on property '{property.Name}' references property '{fkAttr.ReferencedProperty}' on type '{fkAttr.ReferencedType.Name}' which does not have a [Property] attribute");
@@ -4780,7 +4788,7 @@ namespace Durable.SqlServer
                     // Check if entity columns exist in database
                     foreach (PropertyInfo prop in mappedProperties)
                     {
-                        PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
+                        PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
                         if (propAttr != null)
                         {
                             if (!existingColumnNames.Contains(propAttr.Name, StringComparer.OrdinalIgnoreCase))
@@ -4796,7 +4804,7 @@ namespace Durable.SqlServer
                         bool foundInEntity = false;
                         foreach (PropertyInfo prop in mappedProperties)
                         {
-                            PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
+                            PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
                             if (propAttr != null && propAttr.Name.Equals(dbColumn.Name, StringComparison.OrdinalIgnoreCase))
                             {
                                 foundInEntity = true;
@@ -4946,7 +4954,7 @@ namespace Durable.SqlServer
         {
             ArgumentNullException.ThrowIfNull(entityType);
 
-            SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter);
+            SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
             List<string> indexSqlStatements = schemaBuilder.BuildCreateIndexSql(entityType);
 
             if (indexSqlStatements.Count == 0)
@@ -4999,7 +5007,7 @@ namespace Durable.SqlServer
             ArgumentNullException.ThrowIfNull(entityType);
             cancellationToken.ThrowIfCancellationRequested();
 
-            SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter);
+            SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
             List<string> indexSqlStatements = schemaBuilder.BuildCreateIndexSql(entityType);
 
             if (indexSqlStatements.Count == 0)
@@ -5135,7 +5143,7 @@ namespace Durable.SqlServer
         {
             ArgumentNullException.ThrowIfNull(entityType);
 
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 
@@ -5156,7 +5164,7 @@ namespace Durable.SqlServer
             ArgumentNullException.ThrowIfNull(entityType);
             cancellationToken.ThrowIfCancellationRequested();
 
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 

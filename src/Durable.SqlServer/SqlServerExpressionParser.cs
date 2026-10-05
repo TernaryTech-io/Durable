@@ -8,6 +8,7 @@ namespace Durable.SqlServer
     using System.Reflection;
     using System.Runtime.CompilerServices;
     using System.Text;
+    using Durable.Metadata;
 
     /// <summary>
     /// Parses and converts LINQ expressions to SQL Server-compatible T-SQL strings.
@@ -16,6 +17,8 @@ namespace Durable.SqlServer
     /// <typeparam name="T">The entity type that the expressions operate on.</typeparam>
     public class SqlServerExpressionParser<T> where T : class
     {
+        private readonly IEntityMetadataProvider _MetadataProvider;
+
 
         #region Public-Members
 
@@ -44,9 +47,11 @@ namespace Durable.SqlServer
         /// </summary>
         /// <param name="columnMappings">A dictionary mapping property names to their corresponding database column names and PropertyInfo objects.</param>
         /// <param name="sanitizer">The sanitizer to use for value formatting and SQL injection prevention. Defaults to SqlServerSanitizer if null.</param>
+        /// <param name="metadataProvider">The entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when columnMappings is null.</exception>
-        public SqlServerExpressionParser(Dictionary<string, PropertyInfo> columnMappings, ISanitizer? sanitizer = null)
+        public SqlServerExpressionParser(Dictionary<string, PropertyInfo> columnMappings, ISanitizer? sanitizer = null, IEntityMetadataProvider? metadataProvider = null)
         {
+            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
             _ColumnMappings = columnMappings ?? throw new ArgumentNullException(nameof(columnMappings));
             _Sanitizer = sanitizer ?? new SqlServerSanitizer();
             _Parameters = new List<(string name, object? value)>();

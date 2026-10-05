@@ -76,8 +76,8 @@ namespace Durable.SqlServer
             _Repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _Transaction = transaction;
             _ExpressionParser = new SqlServerExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer);
-            _JoinBuilder = new SqlServerJoinBuilder(_Repository._Sanitizer);
-            _EntityMapper = new SqlServerEntityMapper<TEntity>(_Repository._DataTypeConverter, _Repository._ColumnMappings, _Repository._Sanitizer);
+            _JoinBuilder = new SqlServerJoinBuilder(_Repository._Sanitizer, _Repository._MetadataProvider);
+            _EntityMapper = new SqlServerEntityMapper<TEntity>(_Repository._DataTypeConverter, _Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider);
         }
 
         #endregion
@@ -564,7 +564,8 @@ namespace Durable.SqlServer
             SqlServerEntityMapper<TEntity> entityMapper = new SqlServerEntityMapper<TEntity>(
                 _Repository._DataTypeConverter,
                 _Repository._ColumnMappings,
-                _Repository._Sanitizer);
+                _Repository._Sanitizer,
+                _Repository._MetadataProvider);
 
             // Return the advanced grouped query builder with full EntityMapper integration
             return new SqlServerGroupedQueryBuilder<TEntity, TKey>(
@@ -1420,7 +1421,7 @@ namespace Durable.SqlServer
         {
             try
             {
-                SqlServerIncludeProcessor processor = new SqlServerIncludeProcessor(_Repository._Sanitizer);
+                SqlServerIncludeProcessor processor = new SqlServerIncludeProcessor(_Repository._Sanitizer, _Repository._MetadataProvider);
                 return processor.ParseIncludes<TEntity>(_IncludePaths);
             }
             catch (Exception ex)
