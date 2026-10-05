@@ -1081,15 +1081,32 @@ namespace Durable.Postgres
                     connection.Open();
                 }
 
+                // Capture SQL if enabled
+                if (_Repository.CaptureSql)
+                {
+                    _Repository.SetLastExecutedSql(sql);
+                }
+
                 using (DbCommand command = connection.CreateCommand())
                 {
                     command.CommandText = sql;
                     using (NpgsqlDataReader reader = (NpgsqlDataReader)command.ExecuteReader())
                     {
-                        while (reader.Read())
+                        // Includes need the joined-result mapper to populate navigation properties
+                        if (_IncludePaths.Count > 0)
                         {
-                            TEntity entity = _EntityMapper.MapEntity(reader, _CachedJoinResult);
-                            results.Add(entity);
+                            PostgresJoinBuilder.PostgresJoinResult joinResult = _CachedJoinResult ?? _JoinBuilder.BuildJoinSql<TEntity>(_Repository._TableName, _IncludePaths);
+
+                            _EntityMapper.ClearProcessingCache();
+                            results.AddRange(_EntityMapper.MapJoinedResults(reader, joinResult, joinResult.Includes));
+                        }
+                        else
+                        {
+                            while (reader.Read())
+                            {
+                                TEntity entity = _EntityMapper.MapEntity(reader, _CachedJoinResult);
+                                results.Add(entity);
+                            }
                         }
                     }
                 }
