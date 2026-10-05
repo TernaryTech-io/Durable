@@ -3498,6 +3498,19 @@
             </summary>
             <returns>A string describing the mapping</returns>
         </member>
+        <member name="T:Durable.Postgres.PostgresSqlFragments">
+            <summary>
+            Helpers for composing SQL fragments.
+            </summary>
+        </member>
+        <member name="M:Durable.Postgres.PostgresSqlFragments.JoinConditions(System.Collections.Generic.IEnumerable{System.String})">
+            <summary>
+            Combines conditions with AND. When there is more than one condition each is wrapped in
+            parentheses, so a condition containing OR cannot bind across its neighbours.
+            </summary>
+            <param name="conditions">The conditions to combine.</param>
+            <returns>The combined condition.</returns>
+        </member>
         <member name="T:Durable.Postgres.PostgresStringExtensions">
             <summary>
             Extension methods for string to provide PostgreSQL connection factory creation.
@@ -3523,6 +3536,32 @@
             <returns>A PostgreSQL connection factory with default configuration</returns>
             <exception cref="T:System.ArgumentNullException">Thrown when connectionString is null</exception>
             <exception cref="T:System.ArgumentException">Thrown when connectionString is empty or whitespace</exception>
+        </member>
+        <member name="T:Durable.Postgres.PostgresTransactionExtensions">
+            <summary>
+            Begins PostgreSQL transactions directly from a connection factory. Because every
+            repository accepts an <see cref="T:Durable.ITransaction"/>, a transaction started here can be shared
+            by repositories of different entity types that use the same factory (a unit of work).
+            </summary>
+        </member>
+        <member name="M:Durable.Postgres.PostgresTransactionExtensions.BeginTransaction(Durable.IConnectionFactory)">
+            <summary>
+            Begins a new database transaction on a connection from the factory.
+            The transaction owns the connection and returns it to the factory when disposed.
+            </summary>
+            <param name="connectionFactory">The PostgreSQL connection factory.</param>
+            <returns>A new transaction instance.</returns>
+            <exception cref="T:System.ArgumentNullException">Thrown when connectionFactory is null.</exception>
+        </member>
+        <member name="M:Durable.Postgres.PostgresTransactionExtensions.BeginTransactionAsync(Durable.IConnectionFactory,System.Threading.CancellationToken)">
+            <summary>
+            Asynchronously begins a new database transaction on a connection from the factory.
+            The transaction owns the connection and returns it to the factory when disposed.
+            </summary>
+            <param name="connectionFactory">The PostgreSQL connection factory.</param>
+            <param name="token">A cancellation token to cancel the operation.</param>
+            <returns>A task representing the asynchronous operation with a new transaction instance.</returns>
+            <exception cref="T:System.ArgumentNullException">Thrown when connectionFactory is null.</exception>
         </member>
         <member name="T:Durable.Postgres.PostgresWindowedQueryBuilder`1">
             <summary>

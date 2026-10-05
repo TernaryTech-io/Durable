@@ -888,7 +888,7 @@ namespace Durable.Postgres
             if (_WhereClauses.Count > 0)
             {
                 sql.Append(" WHERE ");
-                sql.Append(string.Join(" AND ", _WhereClauses));
+                sql.Append(PostgresSqlFragments.JoinConditions(_WhereClauses));
             }
 
             // GROUP BY clause
