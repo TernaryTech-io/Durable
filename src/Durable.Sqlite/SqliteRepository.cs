@@ -88,6 +88,7 @@
         internal readonly ISanitizer _Sanitizer;
         internal readonly IDataTypeConverter _DataTypeConverter;
         internal readonly IEntityMetadataProvider _MetadataProvider;
+        private readonly bool _OwnsConnectionFactory;
         internal readonly VersionColumnInfo _VersionColumnInfo;
         internal readonly IConcurrencyConflictResolver<T> _ConflictResolver;
         internal readonly IChangeTracker<T> _ChangeTracker;
@@ -118,6 +119,7 @@
             ArgumentNullException.ThrowIfNull(connectionString);
             Settings = SqliteRepositorySettings.Parse(connectionString);
             _ConnectionFactory = new SqliteConnectionFactory(connectionString);
+            _OwnsConnectionFactory = true; // We created this factory, so we own it
             _Sanitizer = new SqliteSanitizer();
             _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
             _DataTypeConverter = dataTypeConverter ?? new DataTypeConverter(_MetadataProvider);
@@ -152,6 +154,7 @@
             Settings = settings;
             string connectionString = settings.BuildConnectionString();
             _ConnectionFactory = new SqliteConnectionFactory(connectionString);
+            _OwnsConnectionFactory = true; // We created this factory, so we own it
             _Sanitizer = new SqliteSanitizer();
             _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
             _DataTypeConverter = dataTypeConverter ?? new DataTypeConverter(_MetadataProvider);
@@ -184,6 +187,7 @@
         public SqliteRepository(IConnectionFactory connectionFactory, IBatchInsertConfiguration batchConfig = null, IDataTypeConverter dataTypeConverter = null, IConcurrencyConflictResolver<T> conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
         {
             _ConnectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+            _OwnsConnectionFactory = false; // External factory, we don't own it
             Settings = null!;
             _Sanitizer = new SqliteSanitizer();
             _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
@@ -2419,7 +2423,10 @@
         /// </summary>
         public void Dispose()
         {
-            _ConnectionFactory?.Dispose();
+            if (_OwnsConnectionFactory)
+            {
+                _ConnectionFactory?.Dispose();
+            }
         }
 
         #endregion
