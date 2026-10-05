@@ -125,7 +125,8 @@ namespace Durable.Postgres
             PostgresExpressionParser<TEntity> parser = new PostgresExpressionParser<TEntity>(
                 _Repository._ColumnMappings,
                 _Repository._Sanitizer,
-                _Repository._MetadataProvider
+                _Repository._MetadataProvider,
+                _Repository._DataTypeConverter
             );
 
             // Parse the expression without parameters (embedded values for CASE expressions)

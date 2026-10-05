@@ -76,7 +76,7 @@ namespace Durable.Postgres
         {
             _Repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _Transaction = transaction;
-            _ExpressionParser = new PostgresExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider);
+            _ExpressionParser = new PostgresExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider, _Repository._DataTypeConverter);
             _JoinBuilder = new PostgresJoinBuilder(_Repository._Sanitizer, _Repository._MetadataProvider);
             _EntityMapper = new PostgresEntityMapper<TEntity>(_Repository._DataTypeConverter, _Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider);
         }

@@ -832,7 +832,7 @@ namespace Durable.Postgres
             List<string> whereClauses = _QueryBuilder.GetWhereClauses();
             if (predicate != null)
             {
-                PostgresExpressionParser<TEntity> parser = new PostgresExpressionParser<TEntity>(_Repository._ColumnMappings, _Sanitizer, _Repository._MetadataProvider);
+                PostgresExpressionParser<TEntity> parser = new PostgresExpressionParser<TEntity>(_Repository._ColumnMappings, _Sanitizer, _Repository._MetadataProvider, _Repository._DataTypeConverter);
                 string predicateClause = parser.ParseExpression(predicate.Body);
                 whereClauses.Add(predicateClause);
             }

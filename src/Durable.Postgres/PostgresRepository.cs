@@ -518,7 +518,7 @@ namespace Durable.Postgres
 
             string sql = $"SELECT * FROM {_QualifiedTableName} WHERE {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)} = @id LIMIT 1";
 
-            await foreach (T result in FromSqlAsync(sql, transaction, token, ("@id", id)))
+            await foreach (T result in FromSqlAsync(sql, transaction, token, ("@id", ConvertPrimaryKeyValue(id))))
             {
                 return result;
             }
@@ -573,7 +573,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
             string sql = $"SELECT EXISTS(SELECT 1 FROM {_QualifiedTableName} WHERE {whereClause})";
             object[] parameters = expressionParser.GetParameters().Cast<object>().ToArray();
@@ -617,7 +617,7 @@ namespace Durable.Postgres
             token.ThrowIfCancellationRequested();
 
             string sql = $"SELECT EXISTS(SELECT 1 FROM {_QualifiedTableName} WHERE {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)} = @id)";
-            (string, object?)[] parameters = { ("@id", id) };
+            (string, object?)[] parameters = { ("@id", ConvertPrimaryKeyValue(id)) };
 
             if (transaction != null)
             {
@@ -659,7 +659,7 @@ namespace Durable.Postgres
             }
             else
             {
-                PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+                PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
                 string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
                 sql = $"SELECT COUNT(*) FROM {_QualifiedTableName} WHERE {whereClause}";
                 parameters = expressionParser.GetParameters().Cast<object>().ToArray();
@@ -708,7 +708,7 @@ namespace Durable.Postgres
             }
             else
             {
-                PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+                PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
                 string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
                 sql = $"SELECT COUNT(*) FROM {_QualifiedTableName} WHERE {whereClause}";
                 parameters = expressionParser.GetParameters().Cast<object>().ToArray();
@@ -752,7 +752,7 @@ namespace Durable.Postgres
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM {_QualifiedTableName}");
@@ -802,7 +802,7 @@ namespace Durable.Postgres
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM {_QualifiedTableName}");
@@ -851,7 +851,7 @@ namespace Durable.Postgres
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM {_QualifiedTableName}");
@@ -900,7 +900,7 @@ namespace Durable.Postgres
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM {_QualifiedTableName}");
@@ -955,7 +955,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM {_QualifiedTableName}");
@@ -1009,7 +1009,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM {_QualifiedTableName}");
@@ -1062,7 +1062,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM {_QualifiedTableName}");
@@ -1115,7 +1115,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM {_QualifiedTableName}");
@@ -1429,7 +1429,7 @@ namespace Durable.Postgres
             if (field == null)
                 throw new ArgumentNullException(nameof(field));
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
             List<(string name, object? value)> parameters = parser.GetParameters().ToList();
 
@@ -1517,7 +1517,7 @@ namespace Durable.Postgres
             if (idValue == null)
                 throw new InvalidOperationException("Cannot update entity with null primary key");
 
-            parameters.Add(("@id", idValue));
+            parameters.Add(("@id", ConvertPrimaryKeyValue(idValue)));
 
             string sql;
             if (_VersionColumnInfo != null)
@@ -1629,7 +1629,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
             List<(string name, object? value)> parameters = parser.GetParameters().ToList();
 
@@ -1681,7 +1681,7 @@ namespace Durable.Postgres
             if (updateExpression == null)
                 throw new ArgumentNullException(nameof(updateExpression));
 
-            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
 
             // Initialize parameterized mode (but don't parse anything yet, just set the flag)
             expressionParser.ParseExpressionWithParameters(Expression.Constant(true));  // Dummy expression to set the flag
@@ -1733,7 +1733,7 @@ namespace Durable.Postgres
             if (predicate == null)
                 throw new ArgumentNullException(nameof(predicate));
 
-            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
             string sql = $"DELETE FROM {_QualifiedTableName} WHERE {whereClause}";
             object[] parameters = expressionParser.GetParameters().Cast<object>().ToArray();
@@ -1781,7 +1781,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
 
             // Initialize parameterized mode (but don't parse anything yet, just set the flag)
             expressionParser.ParseExpressionWithParameters(Expression.Constant(true));  // Dummy expression to set the flag
@@ -1837,7 +1837,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
             string sql = $"DELETE FROM {_QualifiedTableName} WHERE {whereClause}";
             object[] parameters = expressionParser.GetParameters().Cast<object>().ToArray();
@@ -1900,7 +1900,7 @@ namespace Durable.Postgres
             int rowsAffected;
             if (transaction != null)
             {
-                rowsAffected = ExecuteNonQueryWithConnection((DbConnection)transaction.Connection, sql, (DbTransaction?)transaction.Transaction, ("@id", id));
+                rowsAffected = ExecuteNonQueryWithConnection((DbConnection)transaction.Connection, sql, (DbTransaction?)transaction.Transaction, ("@id", ConvertPrimaryKeyValue(id)));
             }
             else
             {
@@ -1908,7 +1908,7 @@ namespace Durable.Postgres
                 try
                 {
                     connection = (DbConnection)_ConnectionFactory.GetConnection();
-                    rowsAffected = ExecuteNonQueryWithConnection(connection, sql, null, ("@id", id));
+                    rowsAffected = ExecuteNonQueryWithConnection(connection, sql, null, ("@id", ConvertPrimaryKeyValue(id)));
                 }
                 finally
                 {
@@ -2025,7 +2025,7 @@ namespace Durable.Postgres
             int rowsAffected;
             if (transaction != null)
             {
-                rowsAffected = await ExecuteNonQueryWithConnectionAsync(transaction.Connection, sql, transaction.Transaction, token, ("@id", id)).ConfigureAwait(false);
+                rowsAffected = await ExecuteNonQueryWithConnectionAsync(transaction.Connection, sql, transaction.Transaction, token, ("@id", ConvertPrimaryKeyValue(id))).ConfigureAwait(false);
             }
             else
             {
@@ -2033,7 +2033,7 @@ namespace Durable.Postgres
                 try
                 {
                     connection = await _ConnectionFactory.GetConnectionAsync().ConfigureAwait(false);
-                    rowsAffected = await ExecuteNonQueryWithConnectionAsync(connection, sql, null, token, ("@id", id)).ConfigureAwait(false);
+                    rowsAffected = await ExecuteNonQueryWithConnectionAsync(connection, sql, null, token, ("@id", ConvertPrimaryKeyValue(id))).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -2887,6 +2887,18 @@ namespace Durable.Postgres
             return mappings;
         }
 
+        /// <summary>
+        /// Converts a primary key value to its database representation using the data type converter,
+        /// so that custom key types bind correctly as parameters.
+        /// </summary>
+        /// <param name="id">The primary key value.</param>
+        /// <returns>The converted value, or null when id is null.</returns>
+        private object? ConvertPrimaryKeyValue(object? id)
+        {
+            if (id == null) return null;
+            return _DataTypeConverter.ConvertToDatabase(id, _PrimaryKeyProperty.PropertyType, _PrimaryKeyProperty);
+        }
+
         private void EnsureConnectionOpen(DbConnection connection)
         {
             if (connection.State != ConnectionState.Open)
@@ -3365,7 +3377,7 @@ namespace Durable.Postgres
 
         internal string GetColumnFromExpression(Expression expression)
         {
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             // The parser's GetColumnFromExpression already returns sanitized column names with double quotes
             return parser.GetColumnFromExpression(expression);
         }

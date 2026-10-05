@@ -27,6 +27,7 @@ namespace Durable.Postgres
         private readonly Dictionary<string, PropertyInfo> _ColumnMappings;
         private readonly ISanitizer _Sanitizer;
         private readonly IEntityMetadataProvider _MetadataProvider;
+        private readonly IDataTypeConverter? _DataTypeConverter;
         private readonly List<(string name, object? value)> _Parameters;
         private int _ParameterCounter;
         private bool _UseParameterizedQueries;
@@ -47,9 +48,11 @@ namespace Durable.Postgres
         /// <param name="columnMappings">A dictionary mapping property names to their corresponding database column names and PropertyInfo objects.</param>
         /// <param name="sanitizer">The sanitizer to use for value formatting and SQL injection prevention. Defaults to PostgresSanitizer if null.</param>
         /// <param name="metadataProvider">The entity metadata provider. Defaults to <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
+        /// <param name="dataTypeConverter">Optional data type converter applied to constant values the sanitizer cannot format natively (e.g. custom key types). When null, such values are formatted as before.</param>
         /// <exception cref="ArgumentNullException">Thrown when columnMappings is null.</exception>
-        public PostgresExpressionParser(Dictionary<string, PropertyInfo> columnMappings, ISanitizer? sanitizer = null, IEntityMetadataProvider? metadataProvider = null)
+        public PostgresExpressionParser(Dictionary<string, PropertyInfo> columnMappings, ISanitizer? sanitizer = null, IEntityMetadataProvider? metadataProvider = null, IDataTypeConverter? dataTypeConverter = null)
         {
+            _DataTypeConverter = dataTypeConverter;
             _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
             _ColumnMappings = columnMappings ?? throw new ArgumentNullException(nameof(columnMappings));
             _Sanitizer = sanitizer ?? new PostgresSanitizer();
@@ -617,6 +620,8 @@ namespace Durable.Postgres
 
         private string FormatValue(object? value)
         {
+            value = ConvertCustomValue(value);
+
             // If we're not using parameterized queries, format value directly (backward compatibility)
             if (!_UseParameterizedQueries)
             {
@@ -627,6 +632,31 @@ namespace Durable.Postgres
             string parameterName = $"@p{_ParameterCounter++}";
             _Parameters.Add((parameterName, value));
             return parameterName;
+        }
+
+        private object? ConvertCustomValue(object? value)
+        {
+            if (value == null || _DataTypeConverter == null || IsNativelyFormattable(value.GetType()))
+                return value;
+
+            return _DataTypeConverter.ConvertToDatabase(value, value.GetType());
+        }
+
+        private static bool IsNativelyFormattable(Type type)
+        {
+            return type.IsPrimitive
+                || type.IsEnum
+                || type.IsArray
+                || type == typeof(string)
+                || type == typeof(decimal)
+                || type == typeof(DateTime)
+                || type == typeof(DateTimeOffset)
+                || type == typeof(DateOnly)
+                || type == typeof(TimeOnly)
+                || type == typeof(TimeSpan)
+                || type == typeof(Guid)
+                || type == typeof(System.Net.IPAddress)
+                || type.Namespace?.StartsWith("NpgsqlTypes", StringComparison.Ordinal) == true;
         }
 
         private Func<object?> GetCachedCompiledExpression(Expression expression)
@@ -831,13 +861,22 @@ namespace Durable.Postgres
 
                     if (collection != null)
                     {
-                        List<string> values = new List<string>();
-                        foreach (object? collectionItem in collection)
-                        {
-                            values.Add(FormatValue(collectionItem));
-                        }
-                        return $"{item} IN ({string.Join(", ", values)})";
+                        return BuildInClause(item, collection);
                     }
+                }
+            }
+            else if (methodCall.Object != null
+                && methodCall.Arguments.Count == 1
+                && methodCall.Object.Type != typeof(string)
+                && typeof(System.Collections.IEnumerable).IsAssignableFrom(methodCall.Object.Type))
+            {
+                // Instance collection.Contains(item), e.g. List<T>.Contains or HashSet<T>.Contains - IN operation
+                System.Collections.IEnumerable? collection = GetConstantValue(methodCall.Object) as System.Collections.IEnumerable;
+                string item = Visit(methodCall.Arguments[0]);
+
+                if (collection != null)
+                {
+                    return BuildInClause(item, collection);
                 }
             }
             else if (methodCall.Method.DeclaringType == typeof(string))
@@ -861,16 +900,26 @@ namespace Durable.Postgres
 
                 if (collection != null)
                 {
-                    List<string> values = new List<string>();
-                    foreach (object? collectionItem in collection)
-                    {
-                        values.Add(FormatValue(collectionItem));
-                    }
-                    return $"{item} IN ({string.Join(", ", values)})";
+                    return BuildInClause(item, collection);
                 }
             }
 
             throw new NotSupportedException("Contains method call is not supported in this context. Ensure you're using it with a collection (for IN operations) or string (for LIKE operations).");
+        }
+
+        private string BuildInClause(string item, System.Collections.IEnumerable collection)
+        {
+            List<string> values = new List<string>();
+            foreach (object? collectionItem in collection)
+            {
+                values.Add(FormatValue(collectionItem));
+            }
+
+            // An empty IN list is invalid SQL; an empty collection matches nothing
+            if (values.Count == 0)
+                return "FALSE";
+
+            return $"{item} IN ({string.Join(", ", values)})";
         }
 
         private string HandleDateTimeAdd(MethodCallExpression methodCall)
