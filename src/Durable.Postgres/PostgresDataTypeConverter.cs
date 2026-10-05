@@ -134,6 +134,12 @@ namespace Durable.Postgres
                 return value.ToString()!;
             }
 
+            // Byte array handling - bind directly for PostgreSQL bytea type
+            if (valueType == typeof(byte[]))
+            {
+                return value;
+            }
+
             // Array and Collection handling - serialize to JSON for PostgreSQL jsonb type
             if (valueType.IsArray || (valueType.IsGenericType &&
                 (typeof(IEnumerable).IsAssignableFrom(valueType) && valueType != typeof(string))))
@@ -291,6 +297,12 @@ namespace Durable.Postgres
                 return Convert.ToBoolean(value);
             }
 
+            // Byte array handling - PostgreSQL returns bytea as byte[]
+            if (targetType == typeof(byte[]) && value is byte[])
+            {
+                return value;
+            }
+
             // Array and Collection handling - deserialize from JSON
             if (targetType.IsArray || (targetType.IsGenericType &&
                 (typeof(IEnumerable).IsAssignableFrom(targetType) && targetType != typeof(string))))
@@ -380,6 +392,8 @@ namespace Durable.Postgres
                     return "INTEGER";
                 return "TEXT";
             }
+            if (type == typeof(byte[]))
+                return "BYTEA";
             if (type.IsArray || (type.IsGenericType && typeof(IEnumerable).IsAssignableFrom(type)))
                 return "JSONB";
 
