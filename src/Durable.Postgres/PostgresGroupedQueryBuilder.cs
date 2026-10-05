@@ -12,6 +12,7 @@ namespace Durable.Postgres
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
+    using Durable.Metadata;
 
     /// <summary>
     /// Advanced grouped query builder for PostgreSQL with EntityMapper integration.
@@ -831,7 +832,7 @@ namespace Durable.Postgres
             List<string> whereClauses = _QueryBuilder.GetWhereClauses();
             if (predicate != null)
             {
-                PostgresExpressionParser<TEntity> parser = new PostgresExpressionParser<TEntity>(_Repository._ColumnMappings, _Sanitizer);
+                PostgresExpressionParser<TEntity> parser = new PostgresExpressionParser<TEntity>(_Repository._ColumnMappings, _Sanitizer, _Repository._MetadataProvider);
                 string predicateClause = parser.ParseExpression(predicate.Body);
                 whereClauses.Add(predicateClause);
             }
@@ -1072,7 +1073,7 @@ namespace Durable.Postgres
             if (expression is MemberExpression memberExpr)
             {
                 PropertyInfo property = (PropertyInfo)memberExpr.Member;
-                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _Repository._MetadataProvider.GetColumn(property);
                 return attr?.Name ?? property.Name;
             }
 

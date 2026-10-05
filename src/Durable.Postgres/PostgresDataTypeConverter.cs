@@ -7,6 +7,7 @@ namespace Durable.Postgres
     using System.Reflection;
     using System.Text.Json;
     using Durable;
+    using Durable.Metadata;
 
     /// <summary>
     /// PostgreSQL-specific data type converter that maintains type fidelity for PostgreSQL parameter binding.
@@ -14,6 +15,15 @@ namespace Durable.Postgres
     /// </summary>
     public class PostgresDataTypeConverter : IDataTypeConverter
     {
+
+        #region Public-Members
+
+        /// <summary>
+        /// Gets the metadata provider used to resolve property mapping hints.
+        /// </summary>
+        public IEntityMetadataProvider MetadataProvider { get; }
+
+        #endregion
 
         #region Private-Members
 
@@ -26,6 +36,15 @@ namespace Durable.Postgres
         #endregion
 
         #region Constructors-and-Factories
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PostgresDataTypeConverter"/> class.
+        /// </summary>
+        /// <param name="metadataProvider">The metadata provider used to resolve property mapping hints. Defaults to <see cref="DurableConfiguration.DefaultMetadataProvider"/>.</param>
+        public PostgresDataTypeConverter(IEntityMetadataProvider? metadataProvider = null)
+        {
+            MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
+        }
 
         #endregion
 
@@ -91,7 +110,7 @@ namespace Durable.Postgres
                 // Check if property has Flags.String attribute
                 if (propertyInfo != null)
                 {
-                    PropertyAttribute? propAttr = propertyInfo.GetCustomAttribute<PropertyAttribute>();
+                    PropertyAttribute? propAttr = MetadataProvider.GetColumn(propertyInfo);
                     if (propAttr != null && propAttr.PropertyFlags.HasFlag(Flags.String))
                     {
                         // Store as string if property is marked with Flags.String
@@ -105,7 +124,7 @@ namespace Durable.Postgres
             if (valueType.IsEnum)
             {
                 // Check for PropertyAttribute flags to determine storage preference
-                PropertyAttribute? attr = propertyInfo?.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = MetadataProvider.GetColumn(propertyInfo);
                 if (attr != null && (attr.PropertyFlags & Flags.String) != Flags.String)
                 {
                     // If String flag is NOT set, store as integer
@@ -315,7 +334,7 @@ namespace Durable.Postgres
             type = Nullable.GetUnderlyingType(type) ?? type;
 
             // Check for PropertyAttribute
-            PropertyAttribute? attr = propertyInfo?.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute? attr = MetadataProvider.GetColumn(propertyInfo);
 
             // PostgreSQL type mappings
             if (type == typeof(bool))

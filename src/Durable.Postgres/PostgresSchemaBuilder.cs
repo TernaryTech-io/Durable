@@ -7,6 +7,7 @@ namespace Durable.Postgres
     using System.Linq;
     using System.Reflection;
     using System.Text;
+    using Durable.Metadata;
 
     /// <summary>
     /// Helper class for building PostgreSQL schema (CREATE TABLE) SQL from entity metadata
@@ -15,16 +16,19 @@ namespace Durable.Postgres
     {
         private readonly ISanitizer _sanitizer;
         private readonly IDataTypeConverter _dataTypeConverter;
+        private readonly IEntityMetadataProvider _metadataProvider;
 
         /// <summary>
         /// Initializes a new instance of the PostgresSchemaBuilder class
         /// </summary>
         /// <param name="sanitizer">The sanitizer for SQL identifiers</param>
         /// <param name="dataTypeConverter">The data type converter for SQL type mapping</param>
-        public PostgresSchemaBuilder(ISanitizer sanitizer, IDataTypeConverter dataTypeConverter)
+        /// <param name="metadataProvider">The entity metadata provider</param>
+        public PostgresSchemaBuilder(ISanitizer sanitizer, IDataTypeConverter dataTypeConverter, IEntityMetadataProvider metadataProvider)
         {
             _sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
             _dataTypeConverter = dataTypeConverter ?? throw new ArgumentNullException(nameof(dataTypeConverter));
+            _metadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
         }
 
         /// <summary>
@@ -38,7 +42,7 @@ namespace Durable.Postgres
                 throw new ArgumentNullException(nameof(entityType));
 
             // Get entity metadata
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _metadataProvider.GetEntity(entityType);
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 
@@ -52,7 +56,7 @@ namespace Durable.Postgres
             // Process each property
             foreach (PropertyInfo property in entityType.GetProperties())
             {
-                PropertyAttribute? propAttr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? propAttr = _metadataProvider.GetColumn(property);
                 if (propAttr == null)
                     continue;
 
@@ -67,7 +71,7 @@ namespace Durable.Postgres
                 }
 
                 // Check for foreign key
-                ForeignKeyAttribute? fkAttr = property.GetCustomAttribute<ForeignKeyAttribute>();
+                ForeignKeyAttribute? fkAttr = _metadataProvider.GetForeignKey(property);
                 if (fkAttr != null)
                 {
                     string fkConstraint = BuildForeignKeyConstraint(propAttr.Name, fkAttr);
@@ -164,7 +168,7 @@ namespace Durable.Postgres
             if (!isNullableType && !isReferenceType && !isPrimaryKey && !hasAutoIncrement)
             {
                 // For value types that aren't Nullable<T>, default to NOT NULL unless there's a default value
-                DefaultValueAttribute? defaultAttr = property.GetCustomAttribute<DefaultValueAttribute>();
+                DefaultValueAttribute? defaultAttr = _metadataProvider.GetDefaultValue(property);
                 if (defaultAttr == null)
                 {
                     columnDef.Append(" NOT NULL");
@@ -182,7 +186,7 @@ namespace Durable.Postgres
             StringBuilder fkDef = new StringBuilder();
 
             // Get referenced table name from the ReferencedType's EntityAttribute
-            EntityAttribute? referencedEntityAttr = fkAttr.ReferencedType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? referencedEntityAttr = _metadataProvider.GetEntity(fkAttr.ReferencedType);
             if (referencedEntityAttr == null)
                 throw new InvalidOperationException($"Referenced type '{fkAttr.ReferencedType.Name}' must have an Entity attribute");
 
@@ -193,7 +197,7 @@ namespace Durable.Postgres
             if (referencedProp == null)
                 throw new InvalidOperationException($"Referenced property '{fkAttr.ReferencedProperty}' not found on type '{fkAttr.ReferencedType.Name}'");
 
-            PropertyAttribute? referencedPropAttr = referencedProp.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute? referencedPropAttr = _metadataProvider.GetColumn(referencedProp);
             if (referencedPropAttr == null)
                 throw new InvalidOperationException($"Referenced property '{fkAttr.ReferencedProperty}' on type '{fkAttr.ReferencedType.Name}' must have a Property attribute");
 
@@ -315,7 +319,7 @@ namespace Durable.Postgres
             List<string> indexSqlStatements = new List<string>();
 
             // Get entity metadata
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _metadataProvider.GetEntity(entityType);
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 
@@ -327,11 +331,11 @@ namespace Durable.Postgres
 
             foreach (PropertyInfo property in entityType.GetProperties())
             {
-                PropertyAttribute? propAttr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? propAttr = _metadataProvider.GetColumn(property);
                 if (propAttr == null)
                     continue;
 
-                IndexAttribute[] indexAttrs = property.GetCustomAttributes<IndexAttribute>().ToArray();
+                IndexAttribute[] indexAttrs = _metadataProvider.GetIndexes(property).ToArray();
                 foreach (IndexAttribute indexAttr in indexAttrs)
                 {
                     string indexName = indexAttr.Name ?? $"idx_{tableName}_{propAttr.Name}";
@@ -369,7 +373,7 @@ namespace Durable.Postgres
 
                 for (int i = 0; i < columns.Count; i++)
                 {
-                    PropertyAttribute? propAttr = columns[i].Property.GetCustomAttribute<PropertyAttribute>();
+                    PropertyAttribute? propAttr = _metadataProvider.GetColumn(columns[i].Property);
                     if (propAttr != null)
                     {
                         sql.Append(_sanitizer.SanitizeIdentifier(propAttr.Name));
@@ -386,7 +390,7 @@ namespace Durable.Postgres
             }
 
             // Build indexes from CompositeIndexAttribute on class
-            CompositeIndexAttribute[] compositeIndexAttrs = entityType.GetCustomAttributes<CompositeIndexAttribute>().ToArray();
+            CompositeIndexAttribute[] compositeIndexAttrs = _metadataProvider.GetEntityMetadata(entityType).CompositeIndexes.ToArray();
             foreach (CompositeIndexAttribute compositeAttr in compositeIndexAttrs)
             {
                 StringBuilder sql = new StringBuilder();

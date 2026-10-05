@@ -8,6 +8,7 @@ namespace Durable.Postgres
     using System.Reflection;
     using System.Runtime.CompilerServices;
     using System.Text;
+    using Durable.Metadata;
 
     /// <summary>
     /// Parses and converts LINQ expressions to PostgreSQL-compatible SQL strings.
@@ -25,6 +26,7 @@ namespace Durable.Postgres
 
         private readonly Dictionary<string, PropertyInfo> _ColumnMappings;
         private readonly ISanitizer _Sanitizer;
+        private readonly IEntityMetadataProvider _MetadataProvider;
         private readonly List<(string name, object? value)> _Parameters;
         private int _ParameterCounter;
         private bool _UseParameterizedQueries;
@@ -44,9 +46,11 @@ namespace Durable.Postgres
         /// </summary>
         /// <param name="columnMappings">A dictionary mapping property names to their corresponding database column names and PropertyInfo objects.</param>
         /// <param name="sanitizer">The sanitizer to use for value formatting and SQL injection prevention. Defaults to PostgresSanitizer if null.</param>
+        /// <param name="metadataProvider">The entity metadata provider. Defaults to <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when columnMappings is null.</exception>
-        public PostgresExpressionParser(Dictionary<string, PropertyInfo> columnMappings, ISanitizer? sanitizer = null)
+        public PostgresExpressionParser(Dictionary<string, PropertyInfo> columnMappings, ISanitizer? sanitizer = null, IEntityMetadataProvider? metadataProvider = null)
         {
+            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
             _ColumnMappings = columnMappings ?? throw new ArgumentNullException(nameof(columnMappings));
             _Sanitizer = sanitizer ?? new PostgresSanitizer();
             _Parameters = new List<(string name, object? value)>();
@@ -244,11 +248,11 @@ namespace Durable.Postgres
             // Special handling for GUID properties with Flags.String being compared to GUID values
             bool leftIsGuidString = leftProperty != null &&
                                     leftProperty.PropertyType == typeof(Guid) &&
-                                    leftProperty.GetCustomAttribute<PropertyAttribute>()?.PropertyFlags.HasFlag(Flags.String) == true;
+                                    _MetadataProvider.GetColumn(leftProperty)?.PropertyFlags.HasFlag(Flags.String) == true;
 
             bool rightIsGuidString = rightProperty != null &&
                                      rightProperty.PropertyType == typeof(Guid) &&
-                                     rightProperty.GetCustomAttribute<PropertyAttribute>()?.PropertyFlags.HasFlag(Flags.String) == true;
+                                     _MetadataProvider.GetColumn(rightProperty)?.PropertyFlags.HasFlag(Flags.String) == true;
 
             string left;
             string right;

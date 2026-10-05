@@ -4,6 +4,7 @@ namespace Durable.Postgres
     using System.Collections.Generic;
     using System.Linq;
     using System.Reflection;
+    using Durable.Metadata;
 
     /// <summary>
     /// Simplified PostgreSQL include processor for basic navigation property support.
@@ -21,6 +22,7 @@ namespace Durable.Postgres
         private readonly Dictionary<Type, string> _TableNameCache = new Dictionary<Type, string>();
         private readonly Dictionary<Type, Dictionary<string, PropertyInfo>> _ColumnMappingCache = new Dictionary<Type, Dictionary<string, PropertyInfo>>();
         private readonly ISanitizer _Sanitizer;
+        private readonly IEntityMetadataProvider _MetadataProvider;
         private readonly PostgresIncludeValidator _IncludeValidator;
         private int _AliasCounter = 0;
 
@@ -32,10 +34,12 @@ namespace Durable.Postgres
         /// Initializes a new instance of the PostgresIncludeProcessor class.
         /// </summary>
         /// <param name="sanitizer">The sanitizer to use for SQL identifiers</param>
+        /// <param name="metadataProvider">The entity metadata provider</param>
         /// <param name="maxIncludeDepth">Maximum depth for nested includes to prevent infinite recursion. Default is 5</param>
         /// <exception cref="ArgumentNullException">Thrown when sanitizer is null</exception>
-        public PostgresIncludeProcessor(ISanitizer sanitizer, int maxIncludeDepth = 5)
+        public PostgresIncludeProcessor(ISanitizer sanitizer, IEntityMetadataProvider metadataProvider, int maxIncludeDepth = 5)
         {
+            _MetadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
             _Sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
             _IncludeValidator = new PostgresIncludeValidator(maxIncludeDepth);
         }
@@ -129,7 +133,7 @@ namespace Durable.Postgres
             foreach (PropertyInfo property in properties)
             {
                 // Only include properties with PropertyAttribute
-                PropertyAttribute? propAttr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? propAttr = _MetadataProvider.GetColumn(property);
                 if (propAttr != null)
                 {
                     mappings[propAttr.Name] = property;
@@ -158,7 +162,7 @@ namespace Durable.Postgres
                 return cached;
             }
 
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null)
                 throw new InvalidOperationException($"Entity type '{entityType.Name}' must have an EntityAttribute");
 
@@ -205,7 +209,7 @@ namespace Durable.Postgres
         private void SetupRelationshipInfo(PostgresIncludeInfo includeInfo, Type parentType, PropertyInfo navigationProperty)
         {
             // Check for NavigationProperty attribute (standard many-to-one)
-            NavigationPropertyAttribute? navAttr = navigationProperty.GetCustomAttribute<NavigationPropertyAttribute>();
+            NavigationPropertyAttribute? navAttr = _MetadataProvider.GetNavigation(navigationProperty);
             if (navAttr != null)
             {
                 PropertyInfo? foreignKeyProperty = parentType.GetProperty(navAttr.ForeignKeyProperty);
@@ -217,7 +221,7 @@ namespace Durable.Postgres
             }
 
             // Check for ForeignKey attribute (alternative syntax)
-            ForeignKeyAttribute? foreignKeyAttr = navigationProperty.GetCustomAttribute<ForeignKeyAttribute>();
+            ForeignKeyAttribute? foreignKeyAttr = _MetadataProvider.GetForeignKey(navigationProperty);
             if (foreignKeyAttr != null)
             {
                 PropertyInfo? foreignKeyProperty = parentType.GetProperty(foreignKeyAttr.ReferencedProperty);
@@ -229,7 +233,7 @@ namespace Durable.Postgres
             }
 
             // Check for ManyToMany attribute
-            ManyToManyNavigationPropertyAttribute? manyToManyAttr = navigationProperty.GetCustomAttribute<ManyToManyNavigationPropertyAttribute>();
+            ManyToManyNavigationPropertyAttribute? manyToManyAttr = _MetadataProvider.GetManyToMany(navigationProperty);
             if (manyToManyAttr != null)
             {
                 includeInfo.IsManyToMany = true;
@@ -245,7 +249,7 @@ namespace Durable.Postgres
             }
 
             // Check for InverseNavigationProperty attribute
-            InverseNavigationPropertyAttribute? inverseAttr = navigationProperty.GetCustomAttribute<InverseNavigationPropertyAttribute>();
+            InverseNavigationPropertyAttribute? inverseAttr = _MetadataProvider.GetInverseNavigation(navigationProperty);
             if (inverseAttr != null)
             {
                 includeInfo.InverseForeignKeyProperty = inverseAttr.InverseForeignKeyProperty;
@@ -307,7 +311,7 @@ namespace Durable.Postgres
 
             foreach (PropertyInfo property in properties)
             {
-                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
                 if (attr != null && (attr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey)
                 {
                     return GetColumnName(property);
@@ -320,16 +324,16 @@ namespace Durable.Postgres
 
         private string GetColumnName(PropertyInfo property)
         {
-            PropertyAttribute? propAttr = property.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute? propAttr = _MetadataProvider.GetColumn(property);
             return propAttr?.Name ?? property.Name.ToLowerInvariant();
         }
 
         private bool IsNavigationProperty(PropertyInfo property)
         {
             // Check if it has navigation property attributes
-            if (property.GetCustomAttribute<NavigationPropertyAttribute>() != null ||
-                property.GetCustomAttribute<InverseNavigationPropertyAttribute>() != null ||
-                property.GetCustomAttribute<ManyToManyNavigationPropertyAttribute>() != null)
+            if (_MetadataProvider.GetNavigation(property) != null ||
+                _MetadataProvider.GetInverseNavigation(property) != null ||
+                _MetadataProvider.GetManyToMany(property) != null)
             {
                 return true;
             }

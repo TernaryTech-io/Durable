@@ -7,6 +7,7 @@ namespace Durable.Postgres
     using System.Reflection;
     using System.Text;
     using Npgsql;
+    using Durable.Metadata;
 
     /// <summary>
     /// Handles loading of collection navigation properties for PostgreSQL entities.
@@ -20,6 +21,7 @@ namespace Durable.Postgres
 
         private readonly ISanitizer _Sanitizer;
         private readonly IDataTypeConverter _DataTypeConverter;
+        private readonly IEntityMetadataProvider _MetadataProvider;
 
         #endregion
 
@@ -30,11 +32,13 @@ namespace Durable.Postgres
         /// </summary>
         /// <param name="sanitizer">The sanitizer for SQL identifiers</param>
         /// <param name="dataTypeConverter">The data type converter for database values</param>
+        /// <param name="metadataProvider">The entity metadata provider</param>
         /// <exception cref="ArgumentNullException">Thrown when sanitizer or dataTypeConverter is null</exception>
-        public PostgresCollectionLoader(ISanitizer sanitizer, IDataTypeConverter dataTypeConverter)
+        public PostgresCollectionLoader(ISanitizer sanitizer, IDataTypeConverter dataTypeConverter, IEntityMetadataProvider metadataProvider)
         {
             _Sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
             _DataTypeConverter = dataTypeConverter ?? throw new ArgumentNullException(nameof(dataTypeConverter));
+            _MetadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
         }
 
         #endregion
@@ -400,7 +404,7 @@ namespace Durable.Postgres
         private PropertyInfo? GetPrimaryKeyProperty(Type entityType)
         {
             return entityType.GetProperties()
-                .FirstOrDefault(p => p.GetCustomAttribute<PropertyAttribute>()?
+                .FirstOrDefault(p => _MetadataProvider.GetColumn(p)?
                 .PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
         }
 
@@ -409,13 +413,13 @@ namespace Durable.Postgres
             if (property == null)
                 throw new ArgumentNullException(nameof(property));
 
-            PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
             return attr?.Name ?? property.Name.ToLowerInvariant();
         }
 
         private string GetTableName(Type entityType)
         {
-            EntityAttribute? attr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? attr = _MetadataProvider.GetEntity(entityType);
             if (attr != null && !string.IsNullOrWhiteSpace(attr.Name))
             {
                 return attr.Name;

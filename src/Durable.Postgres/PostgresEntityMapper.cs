@@ -8,6 +8,7 @@ namespace Durable.Postgres
     using System.Reflection;
     using System.Threading;
     using System.Threading.Tasks;
+    using Durable.Metadata;
 
     /// <summary>
     /// Advanced entity mapping capabilities for PostgreSQL data readers.
@@ -28,6 +29,7 @@ namespace Durable.Postgres
         private readonly Dictionary<string, PropertyInfo> _BaseColumnMappings;
         private readonly Dictionary<string, HashSet<object>> _ProcessedEntities;
         private readonly ISanitizer _Sanitizer;
+        private readonly IEntityMetadataProvider _MetadataProvider;
 
         #endregion
 
@@ -39,12 +41,15 @@ namespace Durable.Postgres
         /// <param name="dataTypeConverter">The data type converter for handling complex type conversions</param>
         /// <param name="baseColumnMappings">Column mappings for the primary entity type</param>
         /// <param name="sanitizer">The sanitizer for handling SQL values and identifiers</param>
+        /// <param name="metadataProvider">The entity metadata provider</param>
         /// <exception cref="ArgumentNullException">Thrown when any required parameter is null</exception>
         public PostgresEntityMapper(
             IDataTypeConverter dataTypeConverter,
             Dictionary<string, PropertyInfo> baseColumnMappings,
-            ISanitizer sanitizer)
+            ISanitizer sanitizer,
+            IEntityMetadataProvider metadataProvider)
         {
+            _MetadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
             _DataTypeConverter = dataTypeConverter ?? throw new ArgumentNullException(nameof(dataTypeConverter));
             _BaseColumnMappings = baseColumnMappings ?? throw new ArgumentNullException(nameof(baseColumnMappings));
             _Sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
@@ -479,7 +484,7 @@ namespace Durable.Postgres
             // Find the primary key property and use its value as the entity key
             foreach (KeyValuePair<string, PropertyInfo> kvp in _BaseColumnMappings)
             {
-                PropertyAttribute? attr = kvp.Value.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _MetadataProvider.GetColumn(kvp.Value);
                 if (attr != null && (attr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey)
                 {
                     object? keyValue = kvp.Value.GetValue(entity);

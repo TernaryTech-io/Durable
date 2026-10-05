@@ -827,7 +827,7 @@ namespace Durable.Postgres
             // parse them into SQL using the expression parser
             try
             {
-                PostgresExpressionParser<TEntity> parser = new PostgresExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer);
+                PostgresExpressionParser<TEntity> parser = new PostgresExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider);
                 return parser.ParseExpression(expression);
             }
             catch (NotSupportedException ex) when (ex.Message.Contains("Method") && ex.Message.Contains("is not supported"))

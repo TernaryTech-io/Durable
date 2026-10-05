@@ -76,9 +76,9 @@ namespace Durable.Postgres
         {
             _Repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _Transaction = transaction;
-            _ExpressionParser = new PostgresExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer);
-            _JoinBuilder = new PostgresJoinBuilder(_Repository._Sanitizer);
-            _EntityMapper = new PostgresEntityMapper<TEntity>(_Repository._DataTypeConverter, _Repository._ColumnMappings, _Repository._Sanitizer);
+            _ExpressionParser = new PostgresExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider);
+            _JoinBuilder = new PostgresJoinBuilder(_Repository._Sanitizer, _Repository._MetadataProvider);
+            _EntityMapper = new PostgresEntityMapper<TEntity>(_Repository._DataTypeConverter, _Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider);
         }
 
         #endregion
@@ -276,7 +276,8 @@ namespace Durable.Postgres
             PostgresEntityMapper<TEntity> entityMapper = new PostgresEntityMapper<TEntity>(
                 _Repository._DataTypeConverter,
                 _Repository._ColumnMappings,
-                _Repository._Sanitizer);
+                _Repository._Sanitizer,
+                _Repository._MetadataProvider);
 
             // Return the advanced grouped query builder with full EntityMapper integration
             return new PostgresGroupedQueryBuilder<TEntity, TKey>(

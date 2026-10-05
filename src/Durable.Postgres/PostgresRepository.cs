@@ -14,6 +14,7 @@ namespace Durable.Postgres
     using Durable;
     using Durable.ConcurrencyConflictResolvers;
     using Durable.DefaultValueProviders;
+    using Durable.Metadata;
     using Npgsql;
 
     /// <summary>
@@ -114,6 +115,7 @@ namespace Durable.Postgres
         internal readonly IBatchInsertConfiguration _BatchConfig;
         internal readonly ISanitizer _Sanitizer;
         internal readonly IDataTypeConverter _DataTypeConverter;
+        internal readonly IEntityMetadataProvider _MetadataProvider;
         internal readonly VersionColumnInfo? _VersionColumnInfo;
         internal readonly IConcurrencyConflictResolver<T> _ConflictResolver;
         internal readonly IChangeTracker<T> _ChangeTracker;
@@ -137,16 +139,18 @@ namespace Durable.Postgres
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
+        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when connectionString is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
-        public PostgresRepository(string connectionString, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null)
+        public PostgresRepository(string connectionString, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
         {
             ArgumentNullException.ThrowIfNull(connectionString);
             Settings = PostgresRepositorySettings.Parse(connectionString);
             _ConnectionFactory = new PostgresConnectionFactory(connectionString);
             _OwnsConnectionFactory = true; // We created this factory, so we own it
             _Sanitizer = new PostgresSanitizer();
-            _DataTypeConverter = dataTypeConverter ?? new PostgresDataTypeConverter();
+            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
+            _DataTypeConverter = dataTypeConverter ?? new PostgresDataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -169,9 +173,10 @@ namespace Durable.Postgres
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
+        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when settings is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key), or when settings are invalid.</exception>
-        public PostgresRepository(PostgresRepositorySettings settings, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null)
+        public PostgresRepository(PostgresRepositorySettings settings, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
         {
             ArgumentNullException.ThrowIfNull(settings);
             Settings = settings;
@@ -179,7 +184,8 @@ namespace Durable.Postgres
             _ConnectionFactory = new PostgresConnectionFactory(connectionString);
             _OwnsConnectionFactory = true; // We created this factory, so we own it
             _Sanitizer = new PostgresSanitizer();
-            _DataTypeConverter = dataTypeConverter ?? new PostgresDataTypeConverter();
+            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
+            _DataTypeConverter = dataTypeConverter ?? new PostgresDataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -203,15 +209,17 @@ namespace Durable.Postgres
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
+        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when connectionFactory is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
-        public PostgresRepository(IConnectionFactory connectionFactory, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null)
+        public PostgresRepository(IConnectionFactory connectionFactory, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
         {
             _ConnectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
             _OwnsConnectionFactory = false; // External factory, we don't own it
             Settings = null!;
             _Sanitizer = new PostgresSanitizer();
-            _DataTypeConverter = dataTypeConverter ?? new PostgresDataTypeConverter();
+            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
+            _DataTypeConverter = dataTypeConverter ?? new PostgresDataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -557,7 +565,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
             string sql = $"SELECT EXISTS(SELECT 1 FROM {_Sanitizer.SanitizeIdentifier(_TableName)} WHERE {whereClause})";
             object[] parameters = expressionParser.GetParameters().Cast<object>().ToArray();
@@ -643,7 +651,7 @@ namespace Durable.Postgres
             }
             else
             {
-                PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+                PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
                 string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
                 sql = $"SELECT COUNT(*) FROM {_Sanitizer.SanitizeIdentifier(_TableName)} WHERE {whereClause}";
                 parameters = expressionParser.GetParameters().Cast<object>().ToArray();
@@ -692,7 +700,7 @@ namespace Durable.Postgres
             }
             else
             {
-                PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+                PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
                 string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
                 sql = $"SELECT COUNT(*) FROM {_Sanitizer.SanitizeIdentifier(_TableName)} WHERE {whereClause}";
                 parameters = expressionParser.GetParameters().Cast<object>().ToArray();
@@ -736,7 +744,7 @@ namespace Durable.Postgres
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
@@ -786,7 +794,7 @@ namespace Durable.Postgres
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
@@ -835,7 +843,7 @@ namespace Durable.Postgres
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
@@ -884,7 +892,7 @@ namespace Durable.Postgres
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
@@ -939,7 +947,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
@@ -993,7 +1001,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
@@ -1046,7 +1054,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
@@ -1099,7 +1107,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
@@ -1231,7 +1239,7 @@ namespace Durable.Postgres
                 string columnName = kvp.Key;
                 PropertyInfo property = kvp.Value;
 
-                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
                 if (attr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true)
                     continue;
 
@@ -1242,7 +1250,7 @@ namespace Durable.Postgres
 
             string insertSql = $"INSERT INTO {_Sanitizer.SanitizeIdentifier(_TableName)} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.name))})";
 
-            PropertyAttribute? pkAttr = _PrimaryKeyProperty.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
             bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
 
             if (hasAutoIncrement)
@@ -1413,7 +1421,7 @@ namespace Durable.Postgres
             if (field == null)
                 throw new ArgumentNullException(nameof(field));
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
             List<(string name, object? value)> parameters = parser.GetParameters().ToList();
 
@@ -1613,7 +1621,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
             List<(string name, object? value)> parameters = parser.GetParameters().ToList();
 
@@ -1665,7 +1673,7 @@ namespace Durable.Postgres
             if (updateExpression == null)
                 throw new ArgumentNullException(nameof(updateExpression));
 
-            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
 
             // Initialize parameterized mode (but don't parse anything yet, just set the flag)
             expressionParser.ParseExpressionWithParameters(Expression.Constant(true));  // Dummy expression to set the flag
@@ -1717,7 +1725,7 @@ namespace Durable.Postgres
             if (predicate == null)
                 throw new ArgumentNullException(nameof(predicate));
 
-            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
             string sql = $"DELETE FROM {_Sanitizer.SanitizeIdentifier(_TableName)} WHERE {whereClause}";
             object[] parameters = expressionParser.GetParameters().Cast<object>().ToArray();
@@ -1765,7 +1773,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
 
             // Initialize parameterized mode (but don't parse anything yet, just set the flag)
             expressionParser.ParseExpressionWithParameters(Expression.Constant(true));  // Dummy expression to set the flag
@@ -1821,7 +1829,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
             string sql = $"DELETE FROM {_Sanitizer.SanitizeIdentifier(_TableName)} WHERE {whereClause}";
             object[] parameters = expressionParser.GetParameters().Cast<object>().ToArray();
@@ -2129,7 +2137,7 @@ namespace Durable.Postgres
                 PropertyInfo property = kvp.Value;
                 object? value = property.GetValue(entity);
 
-                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
 
                 // Skip primary key in INSERT if it's auto-increment and has default value (0 for int)
                 if (columnName == _PrimaryKeyColumn && attr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true)
@@ -2263,7 +2271,7 @@ namespace Durable.Postgres
                 PropertyInfo property = kvp.Value;
                 object? value = property.GetValue(entity);
 
-                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
 
                 // Skip primary key in INSERT if it's auto-increment and has default value (0 for int)
                 if (columnName == _PrimaryKeyColumn && attr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true)
@@ -2417,7 +2425,7 @@ namespace Durable.Postgres
             AddParametersToCommand(command, parameters);
 
             using NpgsqlDataReader reader = command.ExecuteReader();
-            PostgresEntityMapper<T> mapper = new PostgresEntityMapper<T>(_DataTypeConverter, _ColumnMappings, _Sanitizer);
+            PostgresEntityMapper<T> mapper = new PostgresEntityMapper<T>(_DataTypeConverter, _ColumnMappings, _Sanitizer, _MetadataProvider);
 
             while (reader.Read())
             {
@@ -2562,7 +2570,7 @@ namespace Durable.Postgres
                 AddParametersToCommand(command, parameters);
 
                 using NpgsqlDataReader reader = await command.ExecuteReaderAsync(token).ConfigureAwait(false);
-                PostgresEntityMapper<T> mapper = new PostgresEntityMapper<T>(_DataTypeConverter, _ColumnMappings, _Sanitizer);
+                PostgresEntityMapper<T> mapper = new PostgresEntityMapper<T>(_DataTypeConverter, _ColumnMappings, _Sanitizer, _MetadataProvider);
 
                 while (await reader.ReadAsync(token).ConfigureAwait(false))
                 {
@@ -2832,7 +2840,7 @@ namespace Durable.Postgres
         /// <returns>The entity name or table name</returns>
         public string GetEntityName()
         {
-            EntityAttribute? entityAttr = typeof(T).GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(typeof(T));
             return entityAttr?.Name ?? typeof(T).Name.ToLowerInvariant();
         }
 
@@ -2843,7 +2851,7 @@ namespace Durable.Postgres
             {
                 if (prop.Name.Equals("Id", StringComparison.OrdinalIgnoreCase))
                 {
-                    PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
+                    PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
                     return new PrimaryKeyInfo(propAttr?.Name ?? prop.Name.ToLowerInvariant(), prop);
                 }
             }
@@ -2861,7 +2869,7 @@ namespace Durable.Postgres
 
             foreach (PropertyInfo prop in properties)
             {
-                PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
                 if (propAttr != null)
                 {
                     mappings[propAttr.Name] = prop;
@@ -3026,7 +3034,7 @@ namespace Durable.Postgres
                 string columnName = kvp.Key;
                 PropertyInfo property = kvp.Value;
 
-                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
                 if (attr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true)
                 {
                     autoIncrementProperty = property;
@@ -3058,7 +3066,7 @@ namespace Durable.Postgres
                         string columnName = kvp.Key;
                         PropertyInfo property = kvp.Value;
 
-                        PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+                        PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
                         if (attr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true)
                             continue;
 
@@ -3203,10 +3211,10 @@ namespace Durable.Postgres
             PropertyInfo[] properties = typeof(T).GetProperties();
             foreach (PropertyInfo property in properties)
             {
-                VersionColumnAttribute? attr = property.GetCustomAttribute<VersionColumnAttribute>();
+                VersionColumnAttribute? attr = _MetadataProvider.GetVersionColumn(property);
                 if (attr != null)
                 {
-                    PropertyAttribute? propAttr = property.GetCustomAttribute<PropertyAttribute>();
+                    PropertyAttribute? propAttr = _MetadataProvider.GetColumn(property);
                     if (propAttr == null)
                         throw new InvalidOperationException($"Version column property {property.Name} must have [Property] attribute");
 
@@ -3234,7 +3242,7 @@ namespace Durable.Postgres
 
             foreach (PropertyInfo property in properties)
             {
-                DefaultValueAttribute? attr = property.GetCustomAttribute<DefaultValueAttribute>();
+                DefaultValueAttribute? attr = _MetadataProvider.GetDefaultValue(property);
                 if (attr != null)
                 {
                     IDefaultValueProvider provider;
@@ -3349,7 +3357,7 @@ namespace Durable.Postgres
 
         internal string GetColumnFromExpression(Expression expression)
         {
-            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             // The parser's GetColumnFromExpression already returns sanitized column names with double quotes
             return parser.GetColumnFromExpression(expression);
         }
@@ -3390,7 +3398,7 @@ namespace Durable.Postgres
             }
 
             // Get table name
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             string tableName = entityAttr!.Name; // Already validated in ValidateTable
 
             // Get schema name from settings (default to "public")
@@ -3413,7 +3421,7 @@ namespace Durable.Postgres
             if (!tableExists)
             {
                 // Create the table
-                PostgresSchemaBuilder schemaBuilder = new PostgresSchemaBuilder(_Sanitizer, _DataTypeConverter);
+                PostgresSchemaBuilder schemaBuilder = new PostgresSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
                 string createTableSql = schemaBuilder.BuildCreateTableSql(entityType);
 
                 if (transaction != null)
@@ -3457,7 +3465,7 @@ namespace Durable.Postgres
             }
 
             // Get table name
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             string tableName = entityAttr!.Name; // Already validated in ValidateTable
 
             // Get schema name from settings (default to "public")
@@ -3480,7 +3488,7 @@ namespace Durable.Postgres
             if (!tableExists)
             {
                 // Create the table
-                PostgresSchemaBuilder schemaBuilder = new PostgresSchemaBuilder(_Sanitizer, _DataTypeConverter);
+                PostgresSchemaBuilder schemaBuilder = new PostgresSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
                 string createTableSql = schemaBuilder.BuildCreateTableSql(entityType);
 
                 if (transaction != null)
@@ -3613,7 +3621,7 @@ namespace Durable.Postgres
             }
 
             // Check for Entity attribute
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null)
             {
                 errors.Add($"Type '{entityType.Name}' must have an [Entity] attribute");
@@ -3623,7 +3631,7 @@ namespace Durable.Postgres
             // Check for at least one property with Property attribute
             PropertyInfo[] properties = entityType.GetProperties();
             List<PropertyInfo> mappedProperties = properties
-                .Where(p => p.GetCustomAttribute<PropertyAttribute>() != null)
+                .Where(p => _MetadataProvider.GetColumn(p) != null)
                 .ToList();
 
             if (mappedProperties.Count == 0)
@@ -3634,7 +3642,7 @@ namespace Durable.Postgres
 
             // Check for primary key
             PropertyInfo? primaryKeyProperty = mappedProperties
-                .FirstOrDefault(p => p.GetCustomAttribute<PropertyAttribute>()?.PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
+                .FirstOrDefault(p => _MetadataProvider.GetColumn(p)?.PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
 
             if (primaryKeyProperty == null)
             {
@@ -3645,11 +3653,11 @@ namespace Durable.Postgres
             // Validate foreign keys
             foreach (PropertyInfo property in mappedProperties)
             {
-                ForeignKeyAttribute? fkAttr = property.GetCustomAttribute<ForeignKeyAttribute>();
+                ForeignKeyAttribute? fkAttr = _MetadataProvider.GetForeignKey(property);
                 if (fkAttr != null)
                 {
                     // Check that referenced type has Entity attribute
-                    EntityAttribute? refEntityAttr = fkAttr.ReferencedType.GetCustomAttribute<EntityAttribute>();
+                    EntityAttribute? refEntityAttr = _MetadataProvider.GetEntity(fkAttr.ReferencedType);
                     if (refEntityAttr == null)
                     {
                         errors.Add($"Foreign key on property '{property.Name}' references type '{fkAttr.ReferencedType.Name}' which does not have an [Entity] attribute");
@@ -3664,7 +3672,7 @@ namespace Durable.Postgres
                     else
                     {
                         // Check that referenced property has Property attribute
-                        PropertyAttribute? refPropAttr = refProperty.GetCustomAttribute<PropertyAttribute>();
+                        PropertyAttribute? refPropAttr = _MetadataProvider.GetColumn(refProperty);
                         if (refPropAttr == null)
                         {
                             errors.Add($"Foreign key on property '{property.Name}' references property '{fkAttr.ReferencedProperty}' on type '{fkAttr.ReferencedType.Name}' which does not have a [Property] attribute");
@@ -3690,7 +3698,7 @@ namespace Durable.Postgres
                         // Check if entity columns exist in database
                         foreach (PropertyInfo prop in mappedProperties)
                         {
-                            PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
+                            PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
                             if (propAttr != null)
                             {
                                 if (!existingColumnNames.Contains(propAttr.Name, StringComparer.OrdinalIgnoreCase))
@@ -3706,7 +3714,7 @@ namespace Durable.Postgres
                             bool foundInEntity = false;
                             foreach (PropertyInfo prop in mappedProperties)
                             {
-                                PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
+                                PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
                                 if (propAttr != null && propAttr.Name.Equals(dbColumn.Name, StringComparison.OrdinalIgnoreCase))
                                 {
                                     foundInEntity = true;
@@ -3765,7 +3773,7 @@ namespace Durable.Postgres
         {
             ArgumentNullException.ThrowIfNull(entityType);
 
-            PostgresSchemaBuilder schemaBuilder = new PostgresSchemaBuilder(_Sanitizer, _DataTypeConverter);
+            PostgresSchemaBuilder schemaBuilder = new PostgresSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
             List<string> indexSqlStatements = schemaBuilder.BuildCreateIndexSql(entityType);
 
             if (indexSqlStatements.Count == 0)
@@ -3810,7 +3818,7 @@ namespace Durable.Postgres
             ArgumentNullException.ThrowIfNull(entityType);
             cancellationToken.ThrowIfCancellationRequested();
 
-            PostgresSchemaBuilder schemaBuilder = new PostgresSchemaBuilder(_Sanitizer, _DataTypeConverter);
+            PostgresSchemaBuilder schemaBuilder = new PostgresSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
             List<string> indexSqlStatements = schemaBuilder.BuildCreateIndexSql(entityType);
 
             if (indexSqlStatements.Count == 0)
@@ -3926,7 +3934,7 @@ namespace Durable.Postgres
         {
             ArgumentNullException.ThrowIfNull(entityType);
 
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 
@@ -3950,7 +3958,7 @@ namespace Durable.Postgres
             ArgumentNullException.ThrowIfNull(entityType);
             cancellationToken.ThrowIfCancellationRequested();
 
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 

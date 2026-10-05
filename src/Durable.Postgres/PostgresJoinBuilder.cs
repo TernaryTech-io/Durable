@@ -4,6 +4,7 @@ namespace Durable.Postgres
     using System.Collections.Generic;
     using System.Reflection;
     using System.Text;
+    using Durable.Metadata;
 
     /// <summary>
     /// Builds SQL JOIN clauses and manages column mappings for PostgreSQL Include operations.
@@ -81,11 +82,12 @@ namespace Durable.Postgres
         /// Initializes a new instance of the PostgresJoinBuilder class.
         /// </summary>
         /// <param name="sanitizer">The sanitizer to use for SQL identifiers and values</param>
+        /// <param name="metadataProvider">The entity metadata provider</param>
         /// <exception cref="ArgumentNullException">Thrown when sanitizer is null</exception>
-        public PostgresJoinBuilder(ISanitizer sanitizer)
+        public PostgresJoinBuilder(ISanitizer sanitizer, IEntityMetadataProvider metadataProvider)
         {
             _Sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
-            _IncludeProcessor = new PostgresIncludeProcessor(sanitizer);
+            _IncludeProcessor = new PostgresIncludeProcessor(sanitizer, metadataProvider);
         }
 
         #endregion

@@ -1,6 +1,8 @@
 namespace Durable
 {
+    using System;
     using System.Threading;
+    using Durable.Metadata;
 
     /// <summary>
     /// Provides global and thread-local configuration settings for Durable ORM behavior.
@@ -13,10 +15,22 @@ namespace Durable
 
         private static volatile bool _GlobalIncludeQuery = false;
         private static readonly AsyncLocal<bool?> _ThreadLocalOverride = new AsyncLocal<bool?>();
+        private static volatile IEntityMetadataProvider _DefaultMetadataProvider = new AttributeEntityMetadataProvider();
 
         #endregion
 
         #region Public-Members
+
+        /// <summary>
+        /// Gets or sets the metadata provider used by repositories and converters that are not given one explicitly.
+        /// Defaults to an <see cref="AttributeEntityMetadataProvider"/>, which reads Durable's mapping attributes.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">Thrown when set to null.</exception>
+        public static IEntityMetadataProvider DefaultMetadataProvider
+        {
+            get => _DefaultMetadataProvider;
+            set => _DefaultMetadataProvider = value ?? throw new ArgumentNullException(nameof(value));
+        }
 
         /// <summary>
         /// Gets or sets the global default for whether repository operations should include executed SQL in results.

@@ -797,6 +797,17 @@
             Provides type conversion functionality between .NET types and database storage formats.
             </summary>
         </member>
+        <member name="P:Durable.DataTypeConverter.MetadataProvider">
+            <summary>
+            Gets the metadata provider used to resolve property mapping hints.
+            </summary>
+        </member>
+        <member name="M:Durable.DataTypeConverter.#ctor(Durable.Metadata.IEntityMetadataProvider)">
+            <summary>
+            Initializes a new instance of the <see cref="T:Durable.DataTypeConverter"/> class.
+            </summary>
+            <param name="metadataProvider">The metadata provider used to resolve property mapping hints. Defaults to <see cref="P:Durable.DurableConfiguration.DefaultMetadataProvider"/>.</param>
+        </member>
         <member name="M:Durable.DataTypeConverter.ConvertToDatabase(System.Object,System.Type,System.Reflection.PropertyInfo)">
             <summary>
             Converts a .NET object to its database storage representation.
@@ -1052,6 +1063,13 @@
             Provides global and thread-local configuration settings for Durable ORM behavior.
             Supports hierarchical configuration where thread-local settings override global settings.
             </summary>
+        </member>
+        <member name="P:Durable.DurableConfiguration.DefaultMetadataProvider">
+            <summary>
+            Gets or sets the metadata provider used by repositories and converters that are not given one explicitly.
+            Defaults to an <see cref="T:Durable.Metadata.AttributeEntityMetadataProvider"/>, which reads Durable's mapping attributes.
+            </summary>
+            <exception cref="T:System.ArgumentNullException">Thrown when set to null.</exception>
         </member>
         <member name="P:Durable.DurableConfiguration.GlobalIncludeQuery">
             <summary>
@@ -3579,6 +3597,313 @@
             <param name="junctionEntityType">The type of the junction entity.</param>
             <param name="thisEntityForeignKeyProperty">The foreign key property name for this entity in the junction table.</param>
             <param name="relatedEntityForeignKeyProperty">The foreign key property name for the related entity in the junction table.</param>
+        </member>
+        <member name="T:Durable.Metadata.AttributeEntityMetadataProvider">
+            <summary>
+            Default metadata provider that reads Durable's mapping attributes from the entity type.
+            Results are cached per type. Derive from this class and override the <c>Resolve*</c> methods
+            to supply mapping from conventions or another attribute system while keeping the remaining defaults.
+            </summary>
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.GetEntityMetadata(System.Type)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.BuildEntityMetadata(System.Type)">
+            <summary>
+            Builds the metadata for an entity type. Called once per type; the result is cached.
+            </summary>
+            <param name="entityType">The entity type.</param>
+            <returns>The entity metadata.</returns>
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.GetMappableProperties(System.Type)">
+            <summary>
+            Gets the properties considered for mapping. Defaults to all public instance properties.
+            </summary>
+            <param name="entityType">The entity type.</param>
+            <returns>The candidate properties.</returns>
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.BuildPropertyMetadata(System.Type,System.Reflection.PropertyInfo)">
+            <summary>
+            Builds the metadata for a single property.
+            </summary>
+            <param name="entityType">The entity type.</param>
+            <param name="property">The property.</param>
+            <returns>The property metadata.</returns>
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.ResolveEntity(System.Type)">
+            <summary>Resolves the entity (table) mapping.</summary>
+            <param name="entityType">The entity type.</param>
+            <returns>The entity mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.ResolveSchema(System.Type)">
+            <summary>Resolves the database schema. Defaults to null (the connection's default schema).</summary>
+            <param name="entityType">The entity type.</param>
+            <returns>The schema name, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.ResolveCompositeIndexes(System.Type)">
+            <summary>Resolves the composite indexes.</summary>
+            <param name="entityType">The entity type.</param>
+            <returns>The composite indexes.</returns>
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.ResolveColumn(System.Type,System.Reflection.PropertyInfo)">
+            <summary>Resolves the column mapping.</summary>
+            <param name="entityType">The entity type.</param>
+            <param name="property">The property.</param>
+            <returns>The column mapping, or null when not mapped.</returns>
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.ResolveForeignKey(System.Type,System.Reflection.PropertyInfo)">
+            <summary>Resolves the foreign key mapping.</summary>
+            <param name="entityType">The entity type.</param>
+            <param name="property">The property.</param>
+            <returns>The foreign key mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.ResolveNavigation(System.Type,System.Reflection.PropertyInfo)">
+            <summary>Resolves the navigation property mapping.</summary>
+            <param name="entityType">The entity type.</param>
+            <param name="property">The property.</param>
+            <returns>The navigation mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.ResolveInverseNavigation(System.Type,System.Reflection.PropertyInfo)">
+            <summary>Resolves the inverse navigation property mapping.</summary>
+            <param name="entityType">The entity type.</param>
+            <param name="property">The property.</param>
+            <returns>The inverse navigation mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.ResolveManyToMany(System.Type,System.Reflection.PropertyInfo)">
+            <summary>Resolves the many-to-many navigation property mapping.</summary>
+            <param name="entityType">The entity type.</param>
+            <param name="property">The property.</param>
+            <returns>The many-to-many mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.ResolveVersionColumn(System.Type,System.Reflection.PropertyInfo)">
+            <summary>Resolves the version column mapping.</summary>
+            <param name="entityType">The entity type.</param>
+            <param name="property">The property.</param>
+            <returns>The version column mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.ResolveDefaultValue(System.Type,System.Reflection.PropertyInfo)">
+            <summary>Resolves the default value mapping.</summary>
+            <param name="entityType">The entity type.</param>
+            <param name="property">The property.</param>
+            <returns>The default value mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.AttributeEntityMetadataProvider.ResolveIndexes(System.Type,System.Reflection.PropertyInfo)">
+            <summary>Resolves the single-column indexes.</summary>
+            <param name="entityType">The entity type.</param>
+            <param name="property">The property.</param>
+            <returns>The indexes.</returns>
+        </member>
+        <member name="T:Durable.Metadata.EntityMetadata">
+            <summary>
+            Resolved mapping metadata for an entity type.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.EntityMetadata.EntityType">
+            <summary>
+            Gets the entity type this metadata describes.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.EntityMetadata.Entity">
+            <summary>
+            Gets the entity (table) mapping, or null when the type is not explicitly mapped to a table.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.EntityMetadata.Schema">
+            <summary>
+            Gets the database schema the table belongs to, or null to use the connection's default schema.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.EntityMetadata.Properties">
+            <summary>
+            Gets the metadata for each public instance property of the entity, in reflection order.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.EntityMetadata.CompositeIndexes">
+            <summary>
+            Gets the composite indexes declared for the entity.
+            </summary>
+        </member>
+        <member name="M:Durable.Metadata.EntityMetadata.#ctor(System.Type,Durable.EntityAttribute,System.String,System.Collections.Generic.IEnumerable{Durable.Metadata.PropertyMetadata},System.Collections.Generic.IEnumerable{Durable.CompositeIndexAttribute})">
+            <summary>
+            Initializes a new instance of the <see cref="T:Durable.Metadata.EntityMetadata"/> class.
+            </summary>
+            <param name="entityType">The entity type.</param>
+            <param name="entity">The entity (table) mapping, or null when not explicitly mapped.</param>
+            <param name="schema">The database schema, or null for the default schema.</param>
+            <param name="properties">The property metadata.</param>
+            <param name="compositeIndexes">The composite indexes, or null for none.</param>
+            <exception cref="T:System.ArgumentNullException">Thrown when entityType or properties is null.</exception>
+        </member>
+        <member name="M:Durable.Metadata.EntityMetadata.GetProperty(System.Reflection.PropertyInfo)">
+            <summary>
+            Gets the metadata for the specified property. Properties are matched by their metadata definition,
+            so a <see cref="T:System.Reflection.PropertyInfo"/> obtained from a base or derived type resolves to the same entry, while
+            properties hidden with <c>new</c> remain distinct.
+            </summary>
+            <param name="property">The property.</param>
+            <returns>The property metadata, or null when the property is not part of this entity.</returns>
+        </member>
+        <member name="M:Durable.Metadata.EntityMetadata.GetProperty(System.String)">
+            <summary>
+            Gets the metadata for the property with the specified CLR name.
+            When several properties share the name (e.g. hidden with <c>new</c>), the most derived one is returned.
+            </summary>
+            <param name="propertyName">The CLR property name.</param>
+            <returns>The property metadata, or null when not found.</returns>
+        </member>
+        <member name="T:Durable.Metadata.EntityMetadataProviderExtensions">
+            <summary>
+            Convenience lookups over an <see cref="T:Durable.Metadata.IEntityMetadataProvider"/>.
+            </summary>
+        </member>
+        <member name="M:Durable.Metadata.EntityMetadataProviderExtensions.GetPropertyMetadata(Durable.Metadata.IEntityMetadataProvider,System.Reflection.PropertyInfo)">
+            <summary>
+            Gets the metadata for a property, resolved against the type the property was obtained from.
+            </summary>
+            <param name="provider">The metadata provider.</param>
+            <param name="property">The property.</param>
+            <returns>The property metadata, or null when the property is not part of the entity.</returns>
+        </member>
+        <member name="M:Durable.Metadata.EntityMetadataProviderExtensions.GetEntity(Durable.Metadata.IEntityMetadataProvider,System.Type)">
+            <summary>Gets the entity (table) mapping for a type.</summary>
+            <param name="provider">The metadata provider.</param>
+            <param name="entityType">The entity type.</param>
+            <returns>The entity mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.EntityMetadataProviderExtensions.GetColumn(Durable.Metadata.IEntityMetadataProvider,System.Reflection.PropertyInfo)">
+            <summary>Gets the column mapping for a property.</summary>
+            <param name="provider">The metadata provider.</param>
+            <param name="property">The property.</param>
+            <returns>The column mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.EntityMetadataProviderExtensions.GetForeignKey(Durable.Metadata.IEntityMetadataProvider,System.Reflection.PropertyInfo)">
+            <summary>Gets the foreign key mapping for a property.</summary>
+            <param name="provider">The metadata provider.</param>
+            <param name="property">The property.</param>
+            <returns>The foreign key mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.EntityMetadataProviderExtensions.GetNavigation(Durable.Metadata.IEntityMetadataProvider,System.Reflection.PropertyInfo)">
+            <summary>Gets the navigation property mapping for a property.</summary>
+            <param name="provider">The metadata provider.</param>
+            <param name="property">The property.</param>
+            <returns>The navigation mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.EntityMetadataProviderExtensions.GetInverseNavigation(Durable.Metadata.IEntityMetadataProvider,System.Reflection.PropertyInfo)">
+            <summary>Gets the inverse navigation property mapping for a property.</summary>
+            <param name="provider">The metadata provider.</param>
+            <param name="property">The property.</param>
+            <returns>The inverse navigation mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.EntityMetadataProviderExtensions.GetManyToMany(Durable.Metadata.IEntityMetadataProvider,System.Reflection.PropertyInfo)">
+            <summary>Gets the many-to-many navigation property mapping for a property.</summary>
+            <param name="provider">The metadata provider.</param>
+            <param name="property">The property.</param>
+            <returns>The many-to-many mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.EntityMetadataProviderExtensions.GetVersionColumn(Durable.Metadata.IEntityMetadataProvider,System.Reflection.PropertyInfo)">
+            <summary>Gets the version column mapping for a property.</summary>
+            <param name="provider">The metadata provider.</param>
+            <param name="property">The property.</param>
+            <returns>The version column mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.EntityMetadataProviderExtensions.GetDefaultValue(Durable.Metadata.IEntityMetadataProvider,System.Reflection.PropertyInfo)">
+            <summary>Gets the default value mapping for a property.</summary>
+            <param name="provider">The metadata provider.</param>
+            <param name="property">The property.</param>
+            <returns>The default value mapping, or null.</returns>
+        </member>
+        <member name="M:Durable.Metadata.EntityMetadataProviderExtensions.GetIndexes(Durable.Metadata.IEntityMetadataProvider,System.Reflection.PropertyInfo)">
+            <summary>Gets the single-column indexes for a property.</summary>
+            <param name="provider">The metadata provider.</param>
+            <param name="property">The property.</param>
+            <returns>The indexes; empty when none.</returns>
+        </member>
+        <member name="T:Durable.Metadata.IEntityMetadataProvider">
+            <summary>
+            Resolves the mapping metadata (table, columns, keys, relationships, indexes) for an entity type.
+            Repositories consult this provider instead of reading mapping attributes directly, which allows
+            mapping to be supplied by conventions or by another attribute system.
+            </summary>
+        </member>
+        <member name="M:Durable.Metadata.IEntityMetadataProvider.GetEntityMetadata(System.Type)">
+            <summary>
+            Gets the mapping metadata for the specified entity type.
+            </summary>
+            <param name="entityType">The entity type.</param>
+            <returns>The resolved metadata. Never null.</returns>
+            <exception cref="T:System.ArgumentNullException">Thrown when entityType is null.</exception>
+        </member>
+        <member name="T:Durable.Metadata.PropertyMetadata">
+            <summary>
+            Resolved mapping metadata for a single entity property. Each member uses the corresponding Durable
+            attribute type as its vocabulary; a metadata provider may construct these instances in code rather
+            than read them from the property.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.PropertyMetadata.Property">
+            <summary>
+            Gets the property this metadata describes.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.PropertyMetadata.Column">
+            <summary>
+            Gets the column mapping, or null when the property is not mapped to a column.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.PropertyMetadata.ForeignKey">
+            <summary>
+            Gets the foreign key mapping, or null.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.PropertyMetadata.Navigation">
+            <summary>
+            Gets the navigation property mapping, or null.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.PropertyMetadata.InverseNavigation">
+            <summary>
+            Gets the inverse navigation property mapping, or null.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.PropertyMetadata.ManyToMany">
+            <summary>
+            Gets the many-to-many navigation property mapping, or null.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.PropertyMetadata.VersionColumn">
+            <summary>
+            Gets the version (concurrency) column mapping, or null.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.PropertyMetadata.DefaultValue">
+            <summary>
+            Gets the default value mapping, or null.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.PropertyMetadata.Indexes">
+            <summary>
+            Gets the single-column indexes declared on the property.
+            </summary>
+        </member>
+        <member name="P:Durable.Metadata.PropertyMetadata.IsNavigation">
+            <summary>
+            Gets a value indicating whether the property is any kind of navigation property.
+            </summary>
+        </member>
+        <member name="M:Durable.Metadata.PropertyMetadata.#ctor(System.Reflection.PropertyInfo,Durable.PropertyAttribute,Durable.ForeignKeyAttribute,Durable.NavigationPropertyAttribute,Durable.InverseNavigationPropertyAttribute,Durable.ManyToManyNavigationPropertyAttribute,Durable.VersionColumnAttribute,Durable.DefaultValueAttribute,System.Collections.Generic.IEnumerable{Durable.IndexAttribute})">
+            <summary>
+            Initializes a new instance of the <see cref="T:Durable.Metadata.PropertyMetadata"/> class.
+            </summary>
+            <param name="property">The property.</param>
+            <param name="column">The column mapping, or null.</param>
+            <param name="foreignKey">The foreign key mapping, or null.</param>
+            <param name="navigation">The navigation property mapping, or null.</param>
+            <param name="inverseNavigation">The inverse navigation property mapping, or null.</param>
+            <param name="manyToMany">The many-to-many navigation property mapping, or null.</param>
+            <param name="versionColumn">The version column mapping, or null.</param>
+            <param name="defaultValue">The default value mapping, or null.</param>
+            <param name="indexes">The single-column indexes, or null for none.</param>
+            <exception cref="T:System.ArgumentNullException">Thrown when property is null.</exception>
         </member>
         <member name="T:Durable.NavigationPropertyAttribute">
             <summary>
