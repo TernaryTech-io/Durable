@@ -115,12 +115,13 @@
             </summary>
             <typeparam name="T">The entity type that contains collection navigation properties</typeparam>
         </member>
-        <member name="M:Durable.MySql.MySqlCollectionLoader`1.#ctor(Durable.ISanitizer,Durable.IDataTypeConverter)">
+        <member name="M:Durable.MySql.MySqlCollectionLoader`1.#ctor(Durable.ISanitizer,Durable.IDataTypeConverter,Durable.Metadata.IEntityMetadataProvider)">
             <summary>
             Initializes a new instance of the MySqlCollectionLoader class.
             </summary>
             <param name="sanitizer">The sanitizer for SQL identifiers</param>
             <param name="dataTypeConverter">The data type converter for database values</param>
+            <param name="metadataProvider">The entity metadata provider.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when sanitizer or dataTypeConverter is null</exception>
         </member>
         <member name="M:Durable.MySql.MySqlCollectionLoader`1.LoadCollections(System.Collections.Generic.List{`0},System.Collections.Generic.List{Durable.MySql.MySqlIncludeInfo},MySqlConnector.MySqlConnection,Durable.ITransaction)">
@@ -473,6 +474,17 @@
             Provides special handling for TINYINT(1) booleans, JSON columns, unsigned integers, ENUM/SET types, and MySQL datetime types.
             </summary>
         </member>
+        <member name="P:Durable.MySql.MySqlDataTypeConverter.MetadataProvider">
+            <summary>
+            Gets the metadata provider used to resolve property mapping hints.
+            </summary>
+        </member>
+        <member name="M:Durable.MySql.MySqlDataTypeConverter.#ctor(Durable.Metadata.IEntityMetadataProvider)">
+            <summary>
+            Initializes a new instance of the <see cref="T:Durable.MySql.MySqlDataTypeConverter"/> class.
+            </summary>
+            <param name="metadataProvider">The metadata provider used to resolve property mapping hints. Defaults to <see cref="P:Durable.DurableConfiguration.DefaultMetadataProvider"/>.</param>
+        </member>
         <member name="M:Durable.MySql.MySqlDataTypeConverter.ConvertToDatabase(System.Object,System.Type,System.Reflection.PropertyInfo)">
             <summary>
             Converts a .NET object to its MySQL database parameter representation.
@@ -516,13 +528,14 @@
             </summary>
             <typeparam name="T">The primary entity type being mapped</typeparam>
         </member>
-        <member name="M:Durable.MySql.MySqlEntityMapper`1.#ctor(Durable.IDataTypeConverter,System.Collections.Generic.Dictionary{System.String,System.Reflection.PropertyInfo},Durable.ISanitizer)">
+        <member name="M:Durable.MySql.MySqlEntityMapper`1.#ctor(Durable.IDataTypeConverter,System.Collections.Generic.Dictionary{System.String,System.Reflection.PropertyInfo},Durable.ISanitizer,Durable.Metadata.IEntityMetadataProvider)">
             <summary>
             Initializes a new instance of the MySqlEntityMapper class.
             </summary>
             <param name="dataTypeConverter">The data type converter for handling complex type conversions</param>
             <param name="baseColumnMappings">Column mappings for the primary entity type</param>
             <param name="sanitizer">The sanitizer for handling SQL values and identifiers</param>
+            <param name="metadataProvider">The entity metadata provider.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when any required parameter is null</exception>
         </member>
         <member name="M:Durable.MySql.MySqlEntityMapper`1.MapJoinedResults(MySqlConnector.MySqlDataReader,Durable.MySql.MySqlJoinBuilder.MySqlJoinResult,System.Collections.Generic.List{Durable.MySql.MySqlIncludeInfo})">
@@ -582,12 +595,13 @@
             </summary>
             <typeparam name="T">The entity type that the expressions operate on.</typeparam>
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.#ctor(System.Collections.Generic.Dictionary{System.String,System.Reflection.PropertyInfo},Durable.ISanitizer)">
+        <member name="M:Durable.MySql.MySqlExpressionParser`1.#ctor(System.Collections.Generic.Dictionary{System.String,System.Reflection.PropertyInfo},Durable.ISanitizer,Durable.Metadata.IEntityMetadataProvider)">
             <summary>
             Initializes a new instance of the MySqlExpressionParser with the specified column mappings and sanitizer.
             </summary>
             <param name="columnMappings">A dictionary mapping property names to their corresponding database column names and PropertyInfo objects.</param>
             <param name="sanitizer">The sanitizer to use for value formatting and SQL injection prevention. Defaults to MySqlSanitizer if null.</param>
+            <param name="metadataProvider">The entity metadata provider. Uses <see cref="P:Durable.DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when columnMappings is null.</exception>
         </member>
         <member name="M:Durable.MySql.MySqlExpressionParser`1.ParseExpression(System.Linq.Expressions.Expression)">
@@ -1043,11 +1057,12 @@
             Handles validation, caching, and relationship discovery for complex entity graphs.
             </summary>
         </member>
-        <member name="M:Durable.MySql.MySqlIncludeProcessor.#ctor(Durable.ISanitizer,System.Int32)">
+        <member name="M:Durable.MySql.MySqlIncludeProcessor.#ctor(Durable.ISanitizer,Durable.Metadata.IEntityMetadataProvider,System.Int32)">
             <summary>
             Initializes a new instance of the MySqlIncludeProcessor class.
             </summary>
             <param name="sanitizer">The sanitizer to use for SQL identifiers</param>
+            <param name="metadataProvider">The entity metadata provider.</param>
             <param name="maxIncludeDepth">Maximum depth for nested includes to prevent infinite recursion. Default is 5</param>
             <exception cref="T:System.ArgumentNullException">Thrown when sanitizer is null</exception>
         </member>
@@ -1174,11 +1189,12 @@
             Gets or sets the table alias that owns this column.
             </summary>
         </member>
-        <member name="M:Durable.MySql.MySqlJoinBuilder.#ctor(Durable.ISanitizer)">
+        <member name="M:Durable.MySql.MySqlJoinBuilder.#ctor(Durable.ISanitizer,Durable.Metadata.IEntityMetadataProvider)">
             <summary>
             Initializes a new instance of the MySqlJoinBuilder class.
             </summary>
             <param name="sanitizer">The sanitizer to use for SQL identifiers and values</param>
+            <param name="metadataProvider">The entity metadata provider.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when sanitizer is null</exception>
         </member>
         <member name="M:Durable.MySql.MySqlJoinBuilder.BuildJoinSql``1(System.String,System.Collections.Generic.List{System.String})">
@@ -2416,7 +2432,7 @@
             Gets the repository settings used to configure the connection
             </summary>
         </member>
-        <member name="M:Durable.MySql.MySqlRepository`1.#ctor(System.String,Durable.IBatchInsertConfiguration,Durable.IDataTypeConverter,Durable.IConcurrencyConflictResolver{`0})">
+        <member name="M:Durable.MySql.MySqlRepository`1.#ctor(System.String,Durable.IBatchInsertConfiguration,Durable.IDataTypeConverter,Durable.IConcurrencyConflictResolver{`0},Durable.Metadata.IEntityMetadataProvider)">
             <summary>
             Initializes a new instance of the MySqlRepository with a connection string and optional configuration.
             Creates an internal MySqlConnectionFactory for connection management.
@@ -2425,10 +2441,11 @@
             <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
             <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
             <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
+            <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="P:Durable.DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when connectionString is null.</exception>
             <exception cref="T:System.InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
         </member>
-        <member name="M:Durable.MySql.MySqlRepository`1.#ctor(Durable.MySql.MySqlRepositorySettings,Durable.IBatchInsertConfiguration,Durable.IDataTypeConverter,Durable.IConcurrencyConflictResolver{`0})">
+        <member name="M:Durable.MySql.MySqlRepository`1.#ctor(Durable.MySql.MySqlRepositorySettings,Durable.IBatchInsertConfiguration,Durable.IDataTypeConverter,Durable.IConcurrencyConflictResolver{`0},Durable.Metadata.IEntityMetadataProvider)">
             <summary>
             Initializes a new instance of the MySqlRepository with repository settings and optional configuration.
             Creates an internal MySqlConnectionFactory using the connection string built from settings.
@@ -2437,10 +2454,11 @@
             <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
             <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
             <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
+            <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="P:Durable.DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when settings is null.</exception>
             <exception cref="T:System.InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key), or when settings are invalid.</exception>
         </member>
-        <member name="M:Durable.MySql.MySqlRepository`1.#ctor(Durable.IConnectionFactory,Durable.IBatchInsertConfiguration,Durable.IDataTypeConverter,Durable.IConcurrencyConflictResolver{`0})">
+        <member name="M:Durable.MySql.MySqlRepository`1.#ctor(Durable.IConnectionFactory,Durable.IBatchInsertConfiguration,Durable.IDataTypeConverter,Durable.IConcurrencyConflictResolver{`0},Durable.Metadata.IEntityMetadataProvider)">
             <summary>
             Initializes a new instance of the MySqlRepository with a provided connection factory and optional configuration.
             Allows for shared connection pooling and factory management across multiple repository instances.
@@ -2450,6 +2468,7 @@
             <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
             <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
             <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
+            <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="P:Durable.DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when connectionFactory is null.</exception>
             <exception cref="T:System.InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
         </member>
@@ -3670,12 +3689,13 @@
             Helper class for building MySQL schema (CREATE TABLE) SQL from entity metadata
             </summary>
         </member>
-        <member name="M:Durable.MySql.MySqlSchemaBuilder.#ctor(Durable.ISanitizer,Durable.IDataTypeConverter)">
+        <member name="M:Durable.MySql.MySqlSchemaBuilder.#ctor(Durable.ISanitizer,Durable.IDataTypeConverter,Durable.Metadata.IEntityMetadataProvider)">
             <summary>
             Initializes a new instance of the MySqlSchemaBuilder class
             </summary>
             <param name="sanitizer">The sanitizer for SQL identifiers</param>
             <param name="dataTypeConverter">The data type converter for SQL type mapping</param>
+            <param name="metadataProvider">The entity metadata provider.</param>
         </member>
         <member name="M:Durable.MySql.MySqlSchemaBuilder.BuildCreateTableSql(System.Type)">
             <summary>

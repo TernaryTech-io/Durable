@@ -84,8 +84,8 @@ namespace Durable.MySql
             _Repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _Transaction = transaction;
             _ExpressionParser = new MySqlExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer);
-            _JoinBuilder = new MySqlJoinBuilder(_Repository._Sanitizer);
-            _EntityMapper = new MySqlEntityMapper<TEntity>(_Repository._DataTypeConverter, _Repository._ColumnMappings, _Repository._Sanitizer);
+            _JoinBuilder = new MySqlJoinBuilder(_Repository._Sanitizer, _Repository._MetadataProvider);
+            _EntityMapper = new MySqlEntityMapper<TEntity>(_Repository._DataTypeConverter, _Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider);
         }
 
         #endregion
@@ -646,7 +646,8 @@ namespace Durable.MySql
             MySqlEntityMapper<TEntity> entityMapper = new MySqlEntityMapper<TEntity>(
                 _Repository._DataTypeConverter,
                 _Repository._ColumnMappings,
-                _Repository._Sanitizer);
+                _Repository._Sanitizer,
+                _Repository._MetadataProvider);
 
             // Return the advanced grouped query builder with full EntityMapper integration
             return new MySqlGroupedQueryBuilder<TEntity, TKey>(
@@ -1541,7 +1542,7 @@ namespace Durable.MySql
         {
             try
             {
-                MySqlIncludeProcessor processor = new MySqlIncludeProcessor(_Repository._Sanitizer);
+                MySqlIncludeProcessor processor = new MySqlIncludeProcessor(_Repository._Sanitizer, _Repository._MetadataProvider);
                 return processor.ParseIncludes<TEntity>(_IncludePaths);
             }
             catch (Exception ex)

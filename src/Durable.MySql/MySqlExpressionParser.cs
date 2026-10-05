@@ -7,6 +7,7 @@ namespace Durable.MySql
     using System.Linq.Expressions;
     using System.Reflection;
     using System.Text;
+    using Durable.Metadata;
 
     /// <summary>
     /// Parses and converts LINQ expressions to MySQL-compatible SQL strings.
@@ -15,6 +16,8 @@ namespace Durable.MySql
     /// <typeparam name="T">The entity type that the expressions operate on.</typeparam>
     public class MySqlExpressionParser<T> where T : class
     {
+        private readonly IEntityMetadataProvider _MetadataProvider;
+
         #region Public-Members
 
         #endregion
@@ -52,9 +55,11 @@ namespace Durable.MySql
         /// </summary>
         /// <param name="columnMappings">A dictionary mapping property names to their corresponding database column names and PropertyInfo objects.</param>
         /// <param name="sanitizer">The sanitizer to use for value formatting and SQL injection prevention. Defaults to MySqlSanitizer if null.</param>
+        /// <param name="metadataProvider">The entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when columnMappings is null.</exception>
-        public MySqlExpressionParser(Dictionary<string, PropertyInfo> columnMappings, ISanitizer? sanitizer = null)
+        public MySqlExpressionParser(Dictionary<string, PropertyInfo> columnMappings, ISanitizer? sanitizer = null, IEntityMetadataProvider? metadataProvider = null)
         {
+            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
             _ColumnMappings = columnMappings ?? throw new ArgumentNullException(nameof(columnMappings));
             _Sanitizer = sanitizer ?? new MySqlSanitizer();
             _Parameters = new List<(string name, object? value)>();

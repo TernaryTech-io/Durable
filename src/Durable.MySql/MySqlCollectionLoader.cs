@@ -7,6 +7,7 @@ namespace Durable.MySql
     using System.Reflection;
     using System.Text;
     using MySqlConnector;
+    using Durable.Metadata;
 
     /// <summary>
     /// Handles loading of collection navigation properties for MySQL entities.
@@ -15,6 +16,8 @@ namespace Durable.MySql
     /// <typeparam name="T">The entity type that contains collection navigation properties</typeparam>
     internal class MySqlCollectionLoader<T> where T : class, new()
     {
+        private readonly IEntityMetadataProvider _MetadataProvider;
+
         #region Private-Members
 
         private readonly ISanitizer _Sanitizer;
@@ -29,9 +32,11 @@ namespace Durable.MySql
         /// </summary>
         /// <param name="sanitizer">The sanitizer for SQL identifiers</param>
         /// <param name="dataTypeConverter">The data type converter for database values</param>
+        /// <param name="metadataProvider">The entity metadata provider.</param>
         /// <exception cref="ArgumentNullException">Thrown when sanitizer or dataTypeConverter is null</exception>
-        public MySqlCollectionLoader(ISanitizer sanitizer, IDataTypeConverter dataTypeConverter)
+        public MySqlCollectionLoader(ISanitizer sanitizer, IDataTypeConverter dataTypeConverter, IEntityMetadataProvider metadataProvider)
         {
+            _MetadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
             _Sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
             _DataTypeConverter = dataTypeConverter ?? throw new ArgumentNullException(nameof(dataTypeConverter));
         }
@@ -437,7 +442,7 @@ namespace Durable.MySql
         private PropertyInfo? GetPrimaryKeyProperty(Type entityType)
         {
             return entityType.GetProperties()
-                .FirstOrDefault(p => p.GetCustomAttribute<PropertyAttribute>()?
+                .FirstOrDefault(p => _MetadataProvider.GetColumn(p)?
                 .PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
         }
 
@@ -451,7 +456,7 @@ namespace Durable.MySql
             if (property == null)
                 throw new ArgumentNullException(nameof(property));
 
-            PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
             return attr?.Name ?? property.Name.ToLowerInvariant();
         }
 
@@ -462,7 +467,7 @@ namespace Durable.MySql
         /// <returns>The table name</returns>
         private string GetTableName(Type entityType)
         {
-            EntityAttribute? attr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? attr = _MetadataProvider.GetEntity(entityType);
             if (attr != null && !string.IsNullOrWhiteSpace(attr.Name))
             {
                 return attr.Name;

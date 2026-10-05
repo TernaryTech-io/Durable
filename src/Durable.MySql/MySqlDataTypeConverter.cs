@@ -7,6 +7,7 @@ namespace Durable.MySql
     using System.Reflection;
     using System.Text.Json;
     using Durable;
+    using Durable.Metadata;
 
     /// <summary>
     /// MySQL-specific data type converter that handles MySQL's unique type representations.
@@ -14,6 +15,24 @@ namespace Durable.MySql
     /// </summary>
     public class MySqlDataTypeConverter : IDataTypeConverter
     {
+
+        #region Metadata
+
+        /// <summary>
+        /// Gets the metadata provider used to resolve property mapping hints.
+        /// </summary>
+        public IEntityMetadataProvider MetadataProvider { get; }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MySqlDataTypeConverter"/> class.
+        /// </summary>
+        /// <param name="metadataProvider">The metadata provider used to resolve property mapping hints. Defaults to <see cref="DurableConfiguration.DefaultMetadataProvider"/>.</param>
+        public MySqlDataTypeConverter(IEntityMetadataProvider? metadataProvider = null)
+        {
+            MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
+        }
+
+        #endregion
 
         #region Private-Members
 
@@ -98,7 +117,7 @@ namespace Durable.MySql
             if (valueType.IsEnum)
             {
                 // Check for PropertyAttribute flags to determine storage preference
-                PropertyAttribute? attr = propertyInfo?.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = MetadataProvider.GetColumn(propertyInfo);
                 if (attr != null && (attr.PropertyFlags & Flags.String) != Flags.String)
                 {
                     // If String flag is NOT set, store as integer
@@ -371,7 +390,7 @@ namespace Durable.MySql
             type = Nullable.GetUnderlyingType(type) ?? type;
 
             // Check for PropertyAttribute
-            PropertyAttribute? attr = propertyInfo?.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute? attr = MetadataProvider.GetColumn(propertyInfo);
 
             // MySQL type mappings
             if (type == typeof(bool))

@@ -4,6 +4,7 @@ namespace Durable.MySql
     using System.Collections.Generic;
     using System.Reflection;
     using System.Text;
+    using Durable.Metadata;
 
     /// <summary>
     /// Builds SQL JOIN clauses and manages column mappings for MySQL Include operations.
@@ -11,6 +12,8 @@ namespace Durable.MySql
     /// </summary>
     internal class MySqlJoinBuilder
     {
+        private readonly IEntityMetadataProvider _MetadataProvider;
+
         #region Public-Members
 
         /// <summary>
@@ -80,11 +83,13 @@ namespace Durable.MySql
         /// Initializes a new instance of the MySqlJoinBuilder class.
         /// </summary>
         /// <param name="sanitizer">The sanitizer to use for SQL identifiers and values</param>
+        /// <param name="metadataProvider">The entity metadata provider.</param>
         /// <exception cref="ArgumentNullException">Thrown when sanitizer is null</exception>
-        public MySqlJoinBuilder(ISanitizer sanitizer)
+        public MySqlJoinBuilder(ISanitizer sanitizer, IEntityMetadataProvider metadataProvider)
         {
+            _MetadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
             _Sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
-            _IncludeProcessor = new MySqlIncludeProcessor(sanitizer);
+            _IncludeProcessor = new MySqlIncludeProcessor(sanitizer, metadataProvider);
         }
 
         #endregion
@@ -308,7 +313,7 @@ namespace Durable.MySql
 
         private string GetColumnNameForProperty(PropertyInfo property)
         {
-            PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
             return attr?.Name ?? property.Name;
         }
 
@@ -317,7 +322,7 @@ namespace Durable.MySql
             Dictionary<string, PropertyInfo> columns = _IncludeProcessor.GetColumnMappings(entityType);
             foreach (KeyValuePair<string, PropertyInfo> kvp in columns)
             {
-                PropertyAttribute? attr = kvp.Value.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? attr = _MetadataProvider.GetColumn(kvp.Value);
                 if (attr != null && (attr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey)
                 {
                     return kvp.Key;

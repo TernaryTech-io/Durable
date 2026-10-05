@@ -7,12 +7,15 @@ namespace Durable.MySql
     using System.Linq;
     using System.Reflection;
     using System.Text;
+    using Durable.Metadata;
 
     /// <summary>
     /// Helper class for building MySQL schema (CREATE TABLE) SQL from entity metadata
     /// </summary>
     internal class MySqlSchemaBuilder
     {
+        private readonly IEntityMetadataProvider _MetadataProvider;
+
         private readonly ISanitizer _sanitizer;
         private readonly IDataTypeConverter _dataTypeConverter;
 
@@ -21,8 +24,10 @@ namespace Durable.MySql
         /// </summary>
         /// <param name="sanitizer">The sanitizer for SQL identifiers</param>
         /// <param name="dataTypeConverter">The data type converter for SQL type mapping</param>
-        public MySqlSchemaBuilder(ISanitizer sanitizer, IDataTypeConverter dataTypeConverter)
+        /// <param name="metadataProvider">The entity metadata provider.</param>
+        public MySqlSchemaBuilder(ISanitizer sanitizer, IDataTypeConverter dataTypeConverter, IEntityMetadataProvider metadataProvider)
         {
+            _MetadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
             _sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
             _dataTypeConverter = dataTypeConverter ?? throw new ArgumentNullException(nameof(dataTypeConverter));
         }
@@ -38,7 +43,7 @@ namespace Durable.MySql
                 throw new ArgumentNullException(nameof(entityType));
 
             // Get entity metadata
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 
@@ -52,7 +57,7 @@ namespace Durable.MySql
             // Process each property
             foreach (PropertyInfo property in entityType.GetProperties())
             {
-                PropertyAttribute? propAttr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? propAttr = _MetadataProvider.GetColumn(property);
                 if (propAttr == null)
                     continue;
 
@@ -67,7 +72,7 @@ namespace Durable.MySql
                 }
 
                 // Check for foreign key
-                ForeignKeyAttribute? fkAttr = property.GetCustomAttribute<ForeignKeyAttribute>();
+                ForeignKeyAttribute? fkAttr = _MetadataProvider.GetForeignKey(property);
                 if (fkAttr != null)
                 {
                     string fkConstraint = BuildForeignKeyConstraint(propAttr.Name, fkAttr);
@@ -151,7 +156,7 @@ namespace Durable.MySql
             if (!isNullableType && !isReferenceType && !isPrimaryKey)
             {
                 // For value types that aren't Nullable<T>, default to NOT NULL unless there's a default value
-                DefaultValueAttribute? defaultAttr = property.GetCustomAttribute<DefaultValueAttribute>();
+                DefaultValueAttribute? defaultAttr = _MetadataProvider.GetDefaultValue(property);
                 if (defaultAttr == null)
                 {
                     columnDef.Append(" NOT NULL");
@@ -169,7 +174,7 @@ namespace Durable.MySql
             StringBuilder fkDef = new StringBuilder();
 
             // Get referenced table name from the ReferencedType's EntityAttribute
-            EntityAttribute? referencedEntityAttr = fkAttr.ReferencedType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? referencedEntityAttr = _MetadataProvider.GetEntity(fkAttr.ReferencedType);
             if (referencedEntityAttr == null)
                 throw new InvalidOperationException($"Referenced type '{fkAttr.ReferencedType.Name}' must have an Entity attribute");
 
@@ -180,7 +185,7 @@ namespace Durable.MySql
             if (referencedProp == null)
                 throw new InvalidOperationException($"Referenced property '{fkAttr.ReferencedProperty}' not found on type '{fkAttr.ReferencedType.Name}'");
 
-            PropertyAttribute? referencedPropAttr = referencedProp.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute? referencedPropAttr = _MetadataProvider.GetColumn(referencedProp);
             if (referencedPropAttr == null)
                 throw new InvalidOperationException($"Referenced property '{fkAttr.ReferencedProperty}' on type '{fkAttr.ReferencedType.Name}' must have a Property attribute");
 
@@ -283,7 +288,7 @@ namespace Durable.MySql
             List<string> indexSqlStatements = new List<string>();
 
             // Get entity metadata
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 
@@ -295,11 +300,11 @@ namespace Durable.MySql
 
             foreach (PropertyInfo property in entityType.GetProperties())
             {
-                PropertyAttribute? propAttr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? propAttr = _MetadataProvider.GetColumn(property);
                 if (propAttr == null)
                     continue;
 
-                IndexAttribute[] indexAttrs = property.GetCustomAttributes<IndexAttribute>().ToArray();
+                IndexAttribute[] indexAttrs = _MetadataProvider.GetIndexes(property).ToArray();
                 foreach (IndexAttribute indexAttr in indexAttrs)
                 {
                     string indexName = indexAttr.Name ?? $"idx_{tableName}_{propAttr.Name}";
@@ -337,7 +342,7 @@ namespace Durable.MySql
 
                 for (int i = 0; i < columns.Count; i++)
                 {
-                    PropertyAttribute? propAttr = columns[i].Property.GetCustomAttribute<PropertyAttribute>();
+                    PropertyAttribute? propAttr = _MetadataProvider.GetColumn(columns[i].Property);
                     if (propAttr != null)
                     {
                         sql.Append(_sanitizer.SanitizeIdentifier(propAttr.Name));
@@ -354,7 +359,7 @@ namespace Durable.MySql
             }
 
             // Build indexes from CompositeIndexAttribute on class
-            CompositeIndexAttribute[] compositeIndexAttrs = entityType.GetCustomAttributes<CompositeIndexAttribute>().ToArray();
+            CompositeIndexAttribute[] compositeIndexAttrs = _MetadataProvider.GetEntityMetadata(entityType).CompositeIndexes.ToArray();
             foreach (CompositeIndexAttribute compositeAttr in compositeIndexAttrs)
             {
                 StringBuilder sql = new StringBuilder();
