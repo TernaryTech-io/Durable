@@ -1,27 +1,21 @@
-﻿namespace Durable.Sqlite
+namespace Durable.Sqlite
 {
     using System;
     using System.Collections.Generic;
-    using System.Data;
     using System.Data.Common;
-    using System.Linq;
-    using System.Linq.Expressions;
-    using System.Reflection;
-    using System.Runtime.CompilerServices;
-    using System.Text;
+    using System.IO;
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.Data.Sqlite;
     using Durable.ConcurrencyConflictResolvers;
-    using Durable.Metadata;
 
     /// <summary>
-    /// SQLite Repository Implementation with Full Transaction Support and Connection Pooling.
-    /// Provides comprehensive data access operations for entities with support for optimistic concurrency,
-    /// batch operations, SQL capture, and advanced querying capabilities.
+    /// SQLite repository for <typeparamref name="T"/>. All behavior comes from <see cref="SqlRepository{T}"/>; this class
+    /// supplies the SQLite dialect and connection handling and a prepared-statement bulk insert.
+    /// Thread safety: safe for concurrent use (SQLite itself serializes writers).
     /// </summary>
-    /// <typeparam name="T">The entity type that this repository manages. Must be a class with a parameterless constructor.</typeparam>
-    public class SqliteRepository<T> : IRepository<T>, IBatchInsertConfiguration, ISqlCapture, ISqlTrackingConfiguration, IDisposable where T : class, new()
+    /// <typeparam name="T">Entity type.</typeparam>
+    public class SqliteRepository<T> : SqlRepository<T> where T : class, new()
     {
 #pragma warning disable CS8632 // The annotation for nullable reference types should only be used in code within a '#nullable' annotations context.
 
@@ -87,8 +81,6 @@
         internal readonly IBatchInsertConfiguration _BatchConfig;
         internal readonly ISanitizer _Sanitizer;
         internal readonly IDataTypeConverter _DataTypeConverter;
-        internal readonly IEntityMetadataProvider _MetadataProvider;
-        private readonly bool _OwnsConnectionFactory;
         internal readonly VersionColumnInfo _VersionColumnInfo;
         internal readonly IConcurrencyConflictResolver<T> _ConflictResolver;
         internal readonly IChangeTracker<T> _ChangeTracker;
@@ -104,25 +96,21 @@
         #region Constructors-and-Factories
 
         /// <summary>
-        /// Initializes a new instance of the SqliteRepository with a connection string and optional configuration.
-        /// Creates an internal SqliteConnectionFactory for connection management.
+        /// Creates a repository from a connection string. The repository owns its connection factory and disposes it.
         /// </summary>
         /// <param name="connectionString">The SQLite connection string used to connect to the database.</param>
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
-        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when connectionString is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
-        public SqliteRepository(string connectionString, IBatchInsertConfiguration batchConfig = null, IDataTypeConverter dataTypeConverter = null, IConcurrencyConflictResolver<T> conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
+        public SqliteRepository(string connectionString, IBatchInsertConfiguration batchConfig = null, IDataTypeConverter dataTypeConverter = null, IConcurrencyConflictResolver<T> conflictResolver = null)
         {
             ArgumentNullException.ThrowIfNull(connectionString);
             Settings = SqliteRepositorySettings.Parse(connectionString);
             _ConnectionFactory = new SqliteConnectionFactory(connectionString);
-            _OwnsConnectionFactory = true; // We created this factory, so we own it
             _Sanitizer = new SqliteSanitizer();
-            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
-            _DataTypeConverter = dataTypeConverter ?? new DataTypeConverter(_MetadataProvider);
+            _DataTypeConverter = dataTypeConverter ?? new DataTypeConverter();
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -138,26 +126,22 @@
         }
 
         /// <summary>
-        /// Initializes a new instance of the SqliteRepository with repository settings and optional configuration.
-        /// Creates an internal SqliteConnectionFactory using the connection string built from settings.
+        /// Creates a repository from settings. The repository owns its connection factory and disposes it.
         /// </summary>
         /// <param name="settings">The SQLite repository settings to use for configuration.</param>
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
-        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when settings is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key), or when settings are invalid.</exception>
-        public SqliteRepository(SqliteRepositorySettings settings, IBatchInsertConfiguration batchConfig = null, IDataTypeConverter dataTypeConverter = null, IConcurrencyConflictResolver<T> conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
+        public SqliteRepository(SqliteRepositorySettings settings, IBatchInsertConfiguration batchConfig = null, IDataTypeConverter dataTypeConverter = null, IConcurrencyConflictResolver<T> conflictResolver = null)
         {
             ArgumentNullException.ThrowIfNull(settings);
             Settings = settings;
             string connectionString = settings.BuildConnectionString();
             _ConnectionFactory = new SqliteConnectionFactory(connectionString);
-            _OwnsConnectionFactory = true; // We created this factory, so we own it
             _Sanitizer = new SqliteSanitizer();
-            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
-            _DataTypeConverter = dataTypeConverter ?? new DataTypeConverter(_MetadataProvider);
+            _DataTypeConverter = dataTypeConverter ?? new DataTypeConverter();
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -173,25 +157,20 @@
         }
 
         /// <summary>
-        /// Initializes a new instance of the SqliteRepository with a provided connection factory and optional configuration.
-        /// Allows for shared connection pooling and factory management across multiple repository instances.
-        /// Note: When using this constructor, the Settings property will be null as no connection string is directly provided.
+        /// Creates a repository on a shared connection factory. The factory is not disposed with the repository.
         /// </summary>
         /// <param name="connectionFactory">The connection factory to use for database connections.</param>
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
-        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when connectionFactory is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
-        public SqliteRepository(IConnectionFactory connectionFactory, IBatchInsertConfiguration batchConfig = null, IDataTypeConverter dataTypeConverter = null, IConcurrencyConflictResolver<T> conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
+        public SqliteRepository(IConnectionFactory connectionFactory, IBatchInsertConfiguration batchConfig = null, IDataTypeConverter dataTypeConverter = null, IConcurrencyConflictResolver<T> conflictResolver = null)
         {
             _ConnectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
-            _OwnsConnectionFactory = false; // External factory, we don't own it
             Settings = null!;
             _Sanitizer = new SqliteSanitizer();
-            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
-            _DataTypeConverter = dataTypeConverter ?? new DataTypeConverter(_MetadataProvider);
+            _DataTypeConverter = dataTypeConverter ?? new DataTypeConverter();
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -234,114 +213,51 @@
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled via the cancellation token.</exception>
         public async Task<T> ReadFirstAsync(Expression<Func<T, bool>> predicate = null, ITransaction transaction = null, CancellationToken token = default)
         {
-            IQueryBuilder<T> query = Query(transaction);
-            if (predicate != null) query.Where(predicate);
-            query.Take(1);
-
-            IEnumerable<T> results = await query.ExecuteAsync(token);
-            return results.FirstOrDefault();
         }
 
-        /// <summary>
-        /// Reads the first entity that matches the specified predicate, or returns default if no match is found.
-        /// </summary>
-        /// <param name="predicate">Optional predicate to filter entities. If null, returns the first entity.</param>
-        /// <param name="transaction">Optional transaction to execute within.</param>
-        /// <returns>The first entity that matches the predicate, or default(T) if no match is found.</returns>
-        public T ReadFirstOrDefault(Expression<Func<T, bool>> predicate = null, ITransaction transaction = null)
-        {
-            return ReadFirst(predicate, transaction);
-        }
+        #endregion
+
+        #region Public-Methods
 
         /// <summary>
-        /// Asynchronously reads the first entity that matches the specified predicate, or returns default if no match is found.
+        /// Ensures the database file exists by opening a connection (in-memory databases need no action).
         /// </summary>
-        /// <param name="predicate">Optional predicate to filter entities. If null, returns the first entity.</param>
-        /// <param name="transaction">Optional transaction to execute within.</param>
-        /// <param name="token">Cancellation token to cancel the operation.</param>
-        /// <returns>A task that represents the asynchronous operation containing the first entity that matches the predicate, or default(T) if no match is found.</returns>
-        public Task<T> ReadFirstOrDefaultAsync(Expression<Func<T, bool>> predicate = null, ITransaction transaction = null, CancellationToken token = default)
+        public override void CreateDatabaseIfNotExists()
         {
-            return ReadFirstAsync(predicate, transaction, token);
-        }
-
-        /// <summary>
-        /// Reads a single entity that matches the specified predicate. Throws an exception if zero or more than one entity is found.
-        /// </summary>
-        /// <param name="predicate">The predicate to filter entities.</param>
-        /// <param name="transaction">Optional transaction to execute within.</param>
-        /// <returns>The single entity that matches the predicate.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when zero or more than one entity matches the predicate.</exception>
-        public T ReadSingle(Expression<Func<T, bool>> predicate, ITransaction transaction = null)
-        {
-            List<T> results = Query(transaction).Where(predicate).Take(2).Execute().ToList();
-            if (results.Count != 1)
-                throw new InvalidOperationException($"Expected exactly 1 result but found {results.Count}");
-            return results[0];
-        }
-
-        /// <summary>
-        /// Asynchronously reads a single entity that matches the specified predicate. Throws an exception if zero or more than one entity is found.
-        /// </summary>
-        /// <param name="predicate">The predicate to filter entities.</param>
-        /// <param name="transaction">Optional transaction to execute within.</param>
-        /// <param name="token">Cancellation token to cancel the operation.</param>
-        /// <returns>A task that represents the asynchronous operation containing the single entity that matches the predicate.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when zero or more than one entity matches the predicate.</exception>
-        public async Task<T> ReadSingleAsync(Expression<Func<T, bool>> predicate, ITransaction transaction = null, CancellationToken token = default)
-        {
-            List<T> results = new List<T>();
-            await foreach (T item in ReadManyAsync(predicate, transaction, token).ConfigureAwait(false))
+            ThrowIfDisposed();
+            if (Settings is SqliteRepositorySettings settings && !string.IsNullOrEmpty(settings.DataSource) && settings.Mode != SqliteOpenMode.Memory && settings.DataSource != ":memory:")
             {
-                results.Add(item);
-                if (results.Count > 1)
-                    throw new InvalidOperationException($"Expected exactly 1 result but found more");
+                string? directory = Path.GetDirectoryName(Path.GetFullPath(settings.DataSource));
+                if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
             }
 
-            if (results.Count != 1)
-                throw new InvalidOperationException($"Expected exactly 1 result but found {results.Count}");
-
-            return results[0];
+            using DbConnection connection = ConnectionFactory.OpenConnection();
         }
 
         /// <summary>
-        /// Reads a single entity that matches the specified predicate, or returns default if no match is found. Throws an exception if more than one entity is found.
+        /// Ensures the database file exists by opening a connection.
         /// </summary>
-        /// <param name="predicate">The predicate to filter entities.</param>
-        /// <param name="transaction">Optional transaction to execute within.</param>
-        /// <returns>The single entity that matches the predicate, or default(T) if no match is found.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when more than one entity matches the predicate.</exception>
-        public T ReadSingleOrDefault(Expression<Func<T, bool>> predicate, ITransaction transaction = null)
+        /// <param name="token">Cancellation token.</param>
+        /// <returns>A task.</returns>
+        public override async Task CreateDatabaseIfNotExistsAsync(CancellationToken token = default)
         {
-            List<T> results = Query(transaction).Where(predicate).Take(2).Execute().ToList();
-            if (results.Count > 1)
-                throw new InvalidOperationException($"Expected at most 1 result but found {results.Count}");
-            return results.FirstOrDefault();
-        }
-
-        /// <summary>
-        /// Asynchronously reads a single entity that matches the specified predicate, or returns default if no match is found. Throws an exception if more than one entity is found.
-        /// </summary>
-        /// <param name="predicate">The predicate to filter entities.</param>
-        /// <param name="transaction">Optional transaction to execute within.</param>
-        /// <param name="token">Cancellation token to cancel the operation.</param>
-        /// <returns>A task that represents the asynchronous operation containing the single entity that matches the predicate, or default(T) if no match is found.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when more than one entity matches the predicate.</exception>
-        public async Task<T> ReadSingleOrDefaultAsync(Expression<Func<T, bool>> predicate, ITransaction transaction = null, CancellationToken token = default)
-        {
-            List<T> results = new List<T>();
-            await foreach (T item in ReadManyAsync(predicate, transaction, token).ConfigureAwait(false))
+            ThrowIfDisposed();
+            if (Settings is SqliteRepositorySettings settings && !string.IsNullOrEmpty(settings.DataSource) && settings.Mode != SqliteOpenMode.Memory && settings.DataSource != ":memory:")
             {
-                results.Add(item);
-                if (results.Count > 1)
-                    throw new InvalidOperationException($"Expected at most 1 result but found {results.Count}");
+                string? directory = Path.GetDirectoryName(Path.GetFullPath(settings.DataSource));
+                if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
             }
 
-            return results.FirstOrDefault();
+            DbConnection connection = await ConnectionFactory.OpenConnectionAsync(token).ConfigureAwait(false);
+            await connection.DisposeAsync().ConfigureAwait(false);
         }
 
+        #endregion
+
+        #region Private-Methods
+
         /// <summary>
-        /// Reads multiple entities that match the specified predicate.
+        /// Inserts rows with a single prepared INSERT executed once per row inside the transaction, the fastest approach for SQLite.
         /// </summary>
         /// <param name="predicate">Optional predicate to filter entities. If null, returns all entities.</param>
         /// <param name="transaction">Optional transaction to execute within.</param>
@@ -401,7 +317,6 @@
         /// <exception cref="ArgumentNullException">Thrown when id is null.</exception>
         public T ReadById(object id, ITransaction transaction = null)
         {
-            id = ConvertPrimaryKeyValue(id)!;
             ConnectionCommandResult<SqliteConnection, SqliteCommand> result = GetConnectionAndCommand(transaction);
             SqliteConnection connection = result.Connection;
             SqliteCommand command = result.Command;
@@ -437,7 +352,6 @@
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled via the cancellation token.</exception>
         public async Task<T> ReadByIdAsync(object id, ITransaction transaction = null, CancellationToken token = default)
         {
-            id = ConvertPrimaryKeyValue(id)!;
             ConnectionCommandResult<SqliteConnection, SqliteCommand> result = await GetConnectionAndCommandAsync(transaction, token);
             SqliteConnection connection = result.Connection;
             SqliteCommand command = result.Command;
@@ -783,7 +697,7 @@
             bool shouldDispose = result.ShouldReturnToPool;
             try
             {
-                ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+                ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer);
                 string whereClause = BuildWhereClause(predicate);
                 string setPairs = parser.ParseUpdateExpression(updateExpression);
 
@@ -813,7 +727,7 @@
             bool shouldDispose = result.ShouldReturnToPool;
             try
             {
-                ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+                ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer);
                 string whereClause = BuildWhereClause(predicate);
                 string setPairs = parser.ParseUpdateExpression(updateExpression);
 
@@ -1067,9 +981,25 @@
         /// <exception cref="InvalidOperationException">Thrown when unable to create a database connection or transaction.</exception>
         public ITransaction BeginTransaction()
         {
-            return _ConnectionFactory.BeginTransaction();
+            SqliteConnection? connection = null;
+            try
+            {
+                DbConnection dbConn = GetConnection();
+                connection = dbConn is PooledConnectionHandle h ? h.GetInnerConnection<SqliteConnection>() : (SqliteConnection)dbConn;
+                connection.Open();
+                SqliteTransaction transaction = connection.BeginTransaction();
+                SqliteRepositoryTransaction result = new SqliteRepositoryTransaction(connection, transaction, _ConnectionFactory);
+                connection = null; // Transaction now owns the connection
+                return result;
+            }
+            finally
+            {
+                if (connection != null)
+                {
+                    _ConnectionFactory.ReturnConnection(connection);
+                }
+            }
         }
-
 
         /// <summary>
         /// Asynchronously begins a new database transaction for executing multiple operations atomically.
@@ -1079,9 +1009,26 @@
         /// <returns>A task representing the asynchronous operation that returns a transaction object.</returns>
         /// <exception cref="InvalidOperationException">Thrown when unable to create a database connection or transaction.</exception>
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled via the cancellation token.</exception>
-        public Task<ITransaction> BeginTransactionAsync(CancellationToken token = default)
+        public async Task<ITransaction> BeginTransactionAsync(CancellationToken token = default)
         {
-            return _ConnectionFactory.BeginTransactionAsync(token);
+            SqliteConnection? connection = null;
+            try
+            {
+                DbConnection dbConn = GetConnection();
+                connection = dbConn is PooledConnectionHandle h ? h.GetInnerConnection<SqliteConnection>() : (SqliteConnection)dbConn;
+                await connection.OpenAsync(token).ConfigureAwait(false);
+                SqliteTransaction transaction = (SqliteTransaction)await connection.BeginTransactionAsync(token).ConfigureAwait(false);
+                SqliteRepositoryTransaction result = new SqliteRepositoryTransaction(connection, transaction, _ConnectionFactory);
+                connection = null; // Transaction now owns the connection
+                return result;
+            }
+            finally
+            {
+                if (connection != null)
+                {
+                    await _ConnectionFactory.ReturnConnectionAsync(connection).ConfigureAwait(false);
+                }
+            }
         }
 
         // Existence checks
@@ -1145,7 +1092,6 @@
         /// <returns>True if an entity with the specified primary key exists; otherwise, false.</returns>
         public bool ExistsById(object id, ITransaction transaction = null)
         {
-            id = ConvertPrimaryKeyValue(id)!;
             ConnectionCommandResult<SqliteConnection, SqliteCommand> result = GetConnectionAndCommand(transaction);
             SqliteConnection connection = result.Connection;
             SqliteCommand command = result.Command;
@@ -1172,7 +1118,6 @@
         /// <returns>A task that represents the asynchronous operation containing true if an entity with the specified primary key exists; otherwise, false.</returns>
         public async Task<bool> ExistsByIdAsync(object id, ITransaction transaction = null, CancellationToken token = default)
         {
-            id = ConvertPrimaryKeyValue(id)!;
             ConnectionCommandResult<SqliteConnection, SqliteCommand> result = await GetConnectionAndCommandAsync(transaction, token);
             SqliteConnection connection = result.Connection;
             SqliteCommand command = result.Command;
@@ -1285,7 +1230,7 @@
                 {
                     string columnName = kvp.Key;
                     PropertyInfo property = kvp.Value;
-                    PropertyAttribute columnAttr = _MetadataProvider.GetColumn(property);
+                    PropertyAttribute columnAttr = property.GetCustomAttribute<PropertyAttribute>();
 
                     // Skip auto-increment primary keys
                     if (columnAttr != null &&
@@ -1370,7 +1315,7 @@
                 {
                     string columnName = kvp.Key;
                     PropertyInfo property = kvp.Value;
-                    PropertyAttribute columnAttr = _MetadataProvider.GetColumn(property);
+                    PropertyAttribute columnAttr = property.GetCustomAttribute<PropertyAttribute>();
 
                     // Skip auto-increment primary keys
                     if (columnAttr != null &&
@@ -1593,7 +1538,7 @@
 
                     if (columnName == _PrimaryKeyColumn)
                     {
-                        idValue = ConvertPrimaryKeyValue(value);
+                        idValue = value;
                     }
                     else if (_VersionColumnInfo != null && columnName == _VersionColumnInfo.ColumnName)
                     {
@@ -1702,7 +1647,7 @@
 
                     if (columnName == _PrimaryKeyColumn)
                     {
-                        idValue = ConvertPrimaryKeyValue(value);
+                        idValue = value;
                     }
                     else if (_VersionColumnInfo != null && columnName == _VersionColumnInfo.ColumnName)
                     {
@@ -1843,37 +1788,18 @@
         }
 
         /// <summary>
-        /// Asynchronously updates multiple entities that match the specified predicate by applying an async update action to each entity.
+        /// Inserts rows with a single prepared INSERT executed once per row inside the transaction.
         /// </summary>
-        /// <param name="predicate">The predicate to filter entities for updating.</param>
-        /// <param name="updateAction">The async action to apply to each matching entity for updating.</param>
-        /// <param name="transaction">Optional transaction to execute within.</param>
-        /// <param name="token">Cancellation token to cancel the operation.</param>
-        /// <returns>A task that represents the asynchronous operation containing the number of entities that were updated.</returns>
-        public async Task<int> UpdateManyAsync(Expression<Func<T, bool>> predicate, Func<T, Task> updateAction, ITransaction transaction = null, CancellationToken token = default)
+        /// <param name="lease">Lease inside a transaction.</param>
+        /// <param name="entities">Prepared entities.</param>
+        /// <param name="token">Cancellation token.</param>
+        /// <returns>Rows inserted.</returns>
+        protected override async Task<long> BulkInsertCoreAsync(ConnectionLease lease, IReadOnlyList<T> entities, CancellationToken token)
         {
-            // Fetch all entities matching the predicate
-            List<T> entities = new List<T>();
-            await foreach (T entity in ReadManyAsync(predicate, transaction, token))
+            DbCommand command = CreatePreparedInsert(lease);
+            await using (command.ConfigureAwait(false))
             {
-                entities.Add(entity);
-            }
-
-            bool ownTransaction = transaction == null;
-            SqliteConnection connection = null;
-            SqliteTransaction localTransaction = null;
-
-            try
-            {
-                if (ownTransaction)
-                {
-                    DbConnection dbConn = GetConnection();
-                    connection = dbConn is PooledConnectionHandle h ? h.GetInnerConnection<SqliteConnection>() : (SqliteConnection)dbConn;
-                    await connection.OpenAsync(token);
-                    localTransaction = (SqliteTransaction)await connection.BeginTransactionAsync(token);
-                    transaction = new SqliteRepositoryTransaction(connection, localTransaction, _ConnectionFactory);
-                }
-
+                long total = 0;
                 foreach (T entity in entities)
                 {
                     await updateAction(entity);
@@ -1984,7 +1910,7 @@
         /// <exception cref="ArgumentNullException">Thrown when entity is null.</exception>
         public bool Delete(T entity, ITransaction transaction = null)
         {
-            object idValue = ConvertPrimaryKeyValue(GetPrimaryKeyValue(entity));
+            object idValue = GetPrimaryKeyValue(entity);
             return DeleteById(idValue, transaction);
         }
 
@@ -1997,7 +1923,7 @@
         /// <returns>A task that represents the asynchronous operation containing true if the entity was deleted; otherwise, false.</returns>
         public async Task<bool> DeleteAsync(T entity, ITransaction transaction = null, CancellationToken token = default)
         {
-            object idValue = ConvertPrimaryKeyValue(GetPrimaryKeyValue(entity));
+            object idValue = GetPrimaryKeyValue(entity);
             return await DeleteByIdAsync(idValue, transaction, token);
         }
 
@@ -2009,7 +1935,6 @@
         /// <returns>True if the entity was deleted; otherwise, false.</returns>
         public bool DeleteById(object id, ITransaction transaction = null)
         {
-            id = ConvertPrimaryKeyValue(id)!;
             ConnectionCommandResult<SqliteConnection, SqliteCommand> result = GetConnectionAndCommand(transaction);
             SqliteConnection connection = result.Connection;
             SqliteCommand command = result.Command;
@@ -2037,7 +1962,6 @@
         /// <returns>A task that represents the asynchronous operation containing true if the entity was deleted; otherwise, false.</returns>
         public async Task<bool> DeleteByIdAsync(object id, ITransaction transaction = null, CancellationToken token = default)
         {
-            id = ConvertPrimaryKeyValue(id)!;
             ConnectionCommandResult<SqliteConnection, SqliteCommand> result = await GetConnectionAndCommandAsync(transaction, token);
             SqliteConnection connection = result.Connection;
             SqliteCommand command = result.Command;
@@ -2423,29 +2347,12 @@
         /// </summary>
         public void Dispose()
         {
-            if (_OwnsConnectionFactory)
-            {
-                _ConnectionFactory?.Dispose();
-            }
+            _ConnectionFactory?.Dispose();
         }
 
         #endregion
 
         #region Private-Methods
-
-        /// <summary>
-        /// Converts a primary key value to its database representation using the data type converter,
-        /// so that custom key types bind correctly as parameters. Values that are not of the key
-        /// property's type (e.g. already converted) are returned unchanged.
-        /// </summary>
-        /// <param name="id">The primary key value.</param>
-        /// <returns>The converted value, or null when id is null.</returns>
-        private object ConvertPrimaryKeyValue(object id)
-        {
-            Type keyType = Nullable.GetUnderlyingType(_PrimaryKeyProperty.PropertyType) ?? _PrimaryKeyProperty.PropertyType;
-            if (id == null || !keyType.IsInstanceOfType(id)) return id;
-            return _DataTypeConverter.ConvertToDatabase(id, _PrimaryKeyProperty.PropertyType, _PrimaryKeyProperty);
-        }
         
         private T CreateCopyOfEntity(T entity)
         {
@@ -2655,7 +2562,7 @@
         /// <exception cref="InvalidOperationException">Thrown when the entity type does not have an Entity attribute.</exception>
         public string GetEntityName()
         {
-            EntityAttribute entityAttr = _MetadataProvider.GetEntity(typeof(T));
+            EntityAttribute entityAttr = typeof(T).GetCustomAttribute<EntityAttribute>();
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type {typeof(T).Name} must have an Entity attribute");
             return entityAttr.Name;
@@ -2670,7 +2577,7 @@
         {
             foreach (PropertyInfo prop in typeof(T).GetProperties())
             {
-                PropertyAttribute attr = _MetadataProvider.GetColumn(prop);
+                PropertyAttribute attr = prop.GetCustomAttribute<PropertyAttribute>();
                 if (attr != null && (attr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey)
                 {
                     return new PrimaryKeyInfo(attr.Name, prop);
@@ -2690,7 +2597,7 @@
 
             foreach (PropertyInfo prop in typeof(T).GetProperties())
             {
-                PropertyAttribute attr = _MetadataProvider.GetColumn(prop);
+                PropertyAttribute attr = prop.GetCustomAttribute<PropertyAttribute>();
                 if (attr != null)
                 {
                     mappings[attr.Name] = prop;
@@ -2710,7 +2617,7 @@
 
             foreach (PropertyInfo prop in typeof(T).GetProperties())
             {
-                ForeignKeyAttribute fkAttr = _MetadataProvider.GetForeignKey(prop);
+                ForeignKeyAttribute fkAttr = prop.GetCustomAttribute<ForeignKeyAttribute>();
                 if (fkAttr != null)
                 {
                     foreignKeys[prop] = fkAttr;
@@ -2730,7 +2637,7 @@
 
             foreach (PropertyInfo prop in typeof(T).GetProperties())
             {
-                NavigationPropertyAttribute navAttr = _MetadataProvider.GetNavigation(prop);
+                NavigationPropertyAttribute navAttr = prop.GetCustomAttribute<NavigationPropertyAttribute>();
                 if (navAttr != null)
                 {
                     navProps[prop] = navAttr;
@@ -2748,10 +2655,10 @@
         {
             foreach (PropertyInfo prop in typeof(T).GetProperties())
             {
-                VersionColumnAttribute versionAttr = _MetadataProvider.GetVersionColumn(prop);
+                VersionColumnAttribute versionAttr = prop.GetCustomAttribute<VersionColumnAttribute>();
                 if (versionAttr != null)
                 {
-                    PropertyAttribute propAttr = _MetadataProvider.GetColumn(prop);
+                    PropertyAttribute propAttr = prop.GetCustomAttribute<PropertyAttribute>();
                     if (propAttr == null)
                     {
                         throw new InvalidOperationException(
@@ -2782,7 +2689,7 @@
 
             foreach (PropertyInfo prop in typeof(T).GetProperties())
             {
-                DefaultValueAttribute? attr = _MetadataProvider.GetDefaultValue(prop);
+                DefaultValueAttribute? attr = prop.GetCustomAttribute<DefaultValueAttribute>();
                 if (attr == null)
                     continue;
 
@@ -2869,13 +2776,13 @@
 
         internal string BuildWhereClause(Expression<Func<T, bool>> predicate)
         {
-            ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer);
             return parser.ParseExpression(predicate.Body);
         }
 
         internal string GetColumnFromExpression(Expression expression)
         {
-            ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string columnName = parser.GetColumnFromExpression(expression);
             return _Sanitizer.SanitizeIdentifier(columnName);
         }
@@ -3100,7 +3007,7 @@
             {
                 string columnName = kvp.Key;
                 PropertyInfo property = kvp.Value;
-                PropertyAttribute columnAttr = _MetadataProvider.GetColumn(property);
+                PropertyAttribute columnAttr = property.GetCustomAttribute<PropertyAttribute>();
 
                 if (columnAttr != null &&
                     (columnAttr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey &&
@@ -3289,7 +3196,7 @@
             try
             {
                 // Get table name
-                EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+                EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
                 string tableName = entityAttr!.Name; // Already validated in ValidateTable
 
                 // Check if table exists
@@ -3298,7 +3205,7 @@
                 if (!tableExists)
                 {
                     // Create the table
-                    SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
+                    SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter);
                     string createTableSql = schemaBuilder.BuildCreateTableSql(entityType);
 
                     result.Command.CommandText = createTableSql;
@@ -3314,7 +3221,7 @@
                     List<string> expectedColumnNames = new List<string>();
                     foreach (PropertyInfo prop in entityType.GetProperties())
                     {
-                        PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
+                        PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
                         if (propAttr != null)
                         {
                             expectedColumnNames.Add(propAttr.Name);
@@ -3374,7 +3281,7 @@
             try
             {
                 // Get table name
-                EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+                EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
                 string tableName = entityAttr!.Name;
 
                 // Check if table exists
@@ -3383,7 +3290,7 @@
                 if (!tableExists)
                 {
                     // Create the table
-                    SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
+                    SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter);
                     string createTableSql = schemaBuilder.BuildCreateTableSql(entityType);
 
                     result.Command.CommandText = createTableSql;
@@ -3399,7 +3306,7 @@
                     List<string> expectedColumnNames = new List<string>();
                     foreach (PropertyInfo prop in entityType.GetProperties())
                     {
-                        PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
+                        PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
                         if (propAttr != null)
                         {
                         expectedColumnNames.Add(propAttr.Name);
@@ -3539,7 +3446,7 @@
             bool isValid = true;
 
             // Check for Entity attribute
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
             if (entityAttr == null)
             {
                 errors.Add($"Type '{entityType.Name}' must have an Entity attribute");
@@ -3554,7 +3461,7 @@
             // Scan properties
             foreach (PropertyInfo prop in entityType.GetProperties())
             {
-                PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
+                PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
                 if (propAttr == null)
                     continue;
 
@@ -3603,7 +3510,7 @@
                         // Check if entity columns exist in database
                         foreach (PropertyInfo prop in columnProperties)
                         {
-                            PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
+                            PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
                             if (propAttr != null)
                             {
                                 if (!existingColumnNames.Contains(propAttr.Name, StringComparer.OrdinalIgnoreCase))
@@ -3616,7 +3523,7 @@
 
                         // Check for extra columns in database
                         List<string> entityColumnNames = columnProperties
-                            .Select(p => _MetadataProvider.GetColumn(p)?.Name)
+                            .Select(p => p.GetCustomAttribute<PropertyAttribute>()?.Name)
                             .Where(name => name != null)
                             .ToList()!;
 
@@ -3675,7 +3582,7 @@
         {
             ArgumentNullException.ThrowIfNull(entityType);
 
-            SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
+            SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter);
             List<string> indexSqlStatements = schemaBuilder.BuildCreateIndexSql(entityType);
 
             if (indexSqlStatements.Count == 0)
@@ -3720,7 +3627,7 @@
             ArgumentNullException.ThrowIfNull(entityType);
             cancellationToken.ThrowIfCancellationRequested();
 
-            SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
+            SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter);
             List<string> indexSqlStatements = schemaBuilder.BuildCreateIndexSql(entityType);
 
             if (indexSqlStatements.Count == 0)
@@ -3836,7 +3743,7 @@
         {
             ArgumentNullException.ThrowIfNull(entityType);
 
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 
@@ -3861,7 +3768,7 @@
             ArgumentNullException.ThrowIfNull(entityType);
             cancellationToken.ThrowIfCancellationRequested();
 
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 

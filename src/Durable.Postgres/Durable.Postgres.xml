@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <?xml version="1.0"?>
 <doc>
     <assembly>
@@ -3832,3 +3833,286 @@
         </member>
     </members>
 </doc>
+=======
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Durable.Postgres</name>
+    </assembly>
+    <members>
+        <member name="T:Durable.Postgres.PostgresConnectionFactory">
+            <summary>
+            Opens PostgreSQL connections through Npgsql's pooling, either from a connection string or a caller-supplied
+            <see cref="T:Npgsql.NpgsqlDataSource"/>.
+            Thread safety: safe for concurrent use.
+            </summary>
+        </member>
+        <member name="P:Durable.Postgres.PostgresConnectionFactory.DataSource">
+            <summary>
+            Gets the data source supplied by the caller, or null when the factory uses a connection string
+            (connections then come from Npgsql's shared per-connection-string pool).
+            </summary>
+        </member>
+        <member name="P:Durable.Postgres.PostgresConnectionFactory.ConnectionString">
+            <summary>
+            Gets the connection string, or null when the factory wraps a caller-supplied data source.
+            </summary>
+        </member>
+        <member name="M:Durable.Postgres.PostgresConnectionFactory.#ctor(System.String,System.Nullable{System.Int32})">
+            <summary>
+            Instantiates the factory from a connection string. Connections share Npgsql's pool for that connection string,
+            so any number of factories and repositories with the same connection string use one pool.
+            </summary>
+            <param name="connectionString">Npgsql connection string. Must not be null.</param>
+            <param name="maxConcurrentConnections">Optional cap on concurrently open connections; null for none.</param>
+            <exception cref="T:System.ArgumentNullException">Thrown when connectionString is null.</exception>
+        </member>
+        <member name="M:Durable.Postgres.PostgresConnectionFactory.#ctor(Npgsql.NpgsqlDataSource,System.Nullable{System.Int32})">
+            <summary>
+            Instantiates the factory over an existing data source (for example, one configured with type mappings or
+            registered in dependency injection). The data source is not disposed with the factory.
+            </summary>
+            <param name="dataSource">Data source. Must not be null.</param>
+            <param name="maxConcurrentConnections">Optional cap on concurrently open connections; null for none.</param>
+            <exception cref="T:System.ArgumentNullException">Thrown when dataSource is null.</exception>
+        </member>
+        <member name="M:Durable.Postgres.PostgresConnectionFactory.CreateConnection">
+            <inheritdoc />
+        </member>
+        <member name="T:Durable.Postgres.PostgresDataTypeConverter">
+            <summary>
+            PostgreSQL value conversion. Npgsql handles most types natively; this converter makes <see cref="T:System.DateTime"/> values
+            unspecified-kind (for <c>timestamp</c> columns) and <see cref="T:System.DateTimeOffset"/> values UTC (for <c>timestamptz</c>),
+            matching Npgsql 6+ rules, and widens unsigned integers to signed types PostgreSQL supports.
+            Thread safety: stateless; safe for concurrent use.
+            </summary>
+        </member>
+        <member name="M:Durable.Postgres.PostgresDataTypeConverter.#ctor(System.Text.Json.JsonSerializerOptions)">
+            <summary>
+            Instantiates the converter.
+            </summary>
+            <param name="jsonOptions">JSON options for JSON columns; null uses the defaults.</param>
+        </member>
+        <member name="M:Durable.Postgres.PostgresDataTypeConverter.ToDatabaseCore(System.Object,System.Type,Durable.ColumnMetadata)">
+            <inheritdoc />
+        </member>
+        <member name="T:Durable.Postgres.PostgresDialect">
+            <summary>
+            PostgreSQL dialect (PostgreSQL 12+). Tables are resolved in <c>current_schema()</c>, so the connection's
+            search path selects the schema. JSON columns are bound as <c>jsonb</c>.
+            Thread safety: immutable; safe to share.
+            </summary>
+        </member>
+        <member name="P:Durable.Postgres.PostgresDialect.Default">
+            <summary>
+            Gets the shared default instance.
+            </summary>
+        </member>
+        <member name="P:Durable.Postgres.PostgresDialect.RepositoryType">
+            <inheritdoc />
+        </member>
+        <member name="P:Durable.Postgres.PostgresDialect.DbSystemName">
+            <inheritdoc />
+        </member>
+        <member name="P:Durable.Postgres.PostgresDialect.MaxParameters">
+            <inheritdoc />
+        </member>
+        <member name="P:Durable.Postgres.PostgresDialect.OrdinalCollationName">
+            <summary>
+            Gets the binary collation applied by <see cref="M:Durable.Postgres.PostgresDialect.OrdinalCollation(System.String)"/> for ordinal and ignore-case string matching.
+            Default: C. PostgreSQL equality and LIKE are already case- and accent-sensitive under deterministic collations; the collation mainly fixes ordering comparisons.
+            </summary>
+        </member>
+        <member name="P:Durable.Postgres.PostgresDialect.MaxIdentifierLength">
+            <inheritdoc />
+        </member>
+        <member name="P:Durable.Postgres.PostgresDialect.CurrentUtcTimestampSql">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.#ctor(Durable.Sql.IDataTypeConverter,System.String)">
+            <summary>
+            Instantiates the dialect.
+            </summary>
+            <param name="converter">Converter; null uses <see cref="T:Durable.Postgres.PostgresDataTypeConverter"/>.</param>
+            <param name="ordinalCollation">Binary collation for ordinal string matching. Default: C (byte order of UTF-8, which is code-point order).</param>
+            <exception cref="T:System.ArgumentException">Thrown when ordinalCollation is not a simple collation name.</exception>
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.OrderDirection(System.Boolean)">
+            <inheritdoc />
+            <remarks>PostgreSQL sorts NULLs as larger than any value; NULLS FIRST / NULLS LAST restore LINQ ordering.</remarks>
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.OrdinalCollation(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.ConfigureParameter(System.Data.Common.DbParameter,Durable.Sql.SqlParameterValue)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.TranslateFunction(Durable.Query.QueryFunction,System.Collections.Generic.IReadOnlyList{System.String})">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.GetColumnType(Durable.ColumnMetadata)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.TableExistsQuery(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.ColumnNamesQuery(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.IndexNamesQuery(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.CreateIndexSql(System.String,System.String,System.Collections.Generic.IReadOnlyList{System.String},System.Boolean,System.Collections.Generic.IReadOnlyList{System.String})">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.ColumnSchemaQuery(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.IndexSchemaQuery(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.NormalizeColumnType(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.AcquireMigrationLockSql(System.String,System.Int32)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.ReleaseMigrationLockSql(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.AutoIncrementColumnType(Durable.ColumnMetadata,System.Boolean)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.Postgres.PostgresDialect.BinaryLiteral(System.Byte[])">
+            <inheritdoc />
+        </member>
+        <member name="T:Durable.Postgres.PostgresRepository`1">
+            <summary>
+            PostgreSQL repository for <typeparamref name="T"/>. All behavior comes from <see cref="T:Durable.Sql.SqlRepository`1"/>; this class
+            supplies the PostgreSQL dialect, an <see cref="T:Npgsql.NpgsqlDataSource"/>-based connection factory, binary COPY bulk insert,
+            and database creation.
+            Thread safety: safe for concurrent use.
+            </summary>
+            <typeparam name="T">Entity type.</typeparam>
+        </member>
+        <member name="M:Durable.Postgres.PostgresRepository`1.#ctor(System.String,Durable.Sql.SqlRepositoryOptions)">
+            <summary>
+            Creates a repository from a connection string. The repository owns its connection factory and disposes it.
+            Prefer sharing one <see cref="T:Durable.Postgres.PostgresConnectionFactory"/> across repositories in long-running applications.
+            </summary>
+            <param name="connectionString">Npgsql connection string. Must not be null.</param>
+            <param name="options">Options; null uses defaults.</param>
+            <exception cref="T:System.ArgumentNullException">Thrown when connectionString is null.</exception>
+            <exception cref="T:System.InvalidOperationException">Thrown when <typeparamref name="T"/> has no primary key.</exception>
+        </member>
+        <member name="M:Durable.Postgres.PostgresRepository`1.#ctor(Durable.Postgres.PostgresRepositorySettings,Durable.Sql.SqlRepositoryOptions)">
+            <summary>
+            Creates a repository from settings. The repository owns its connection factory and disposes it.
+            </summary>
+            <param name="settings">Settings. Must not be null.</param>
+            <param name="options">Options; null uses defaults.</param>
+            <exception cref="T:System.ArgumentNullException">Thrown when settings is null.</exception>
+        </member>
+        <member name="M:Durable.Postgres.PostgresRepository`1.#ctor(Durable.Sql.IConnectionFactory,Durable.Sql.SqlRepositoryOptions)">
+            <summary>
+            Creates a repository on a shared connection factory. The factory is not disposed with the repository.
+            </summary>
+            <param name="connectionFactory">Factory producing <see cref="T:Npgsql.NpgsqlConnection"/> instances. Must not be null.</param>
+            <param name="options">Options; null uses defaults.</param>
+            <exception cref="T:System.ArgumentNullException">Thrown when connectionFactory is null.</exception>
+        </member>
+        <member name="M:Durable.Postgres.PostgresRepository`1.CreateDatabaseIfNotExists">
+            <summary>
+            Creates the database named in the settings when it does not exist, connecting to the "postgres" maintenance database.
+            </summary>
+            <exception cref="T:System.InvalidOperationException">Thrown when no database name is configured.</exception>
+        </member>
+        <member name="M:Durable.Postgres.PostgresRepository`1.CreateDatabaseIfNotExistsAsync(System.Threading.CancellationToken)">
+            <summary>
+            Creates the database named in the settings when it does not exist.
+            </summary>
+            <param name="token">Cancellation token.</param>
+            <returns>A task.</returns>
+            <exception cref="T:System.InvalidOperationException">Thrown when no database name is configured.</exception>
+        </member>
+        <member name="M:Durable.Postgres.PostgresRepository`1.BulkInsertCore(Durable.Sql.ConnectionLease,System.Collections.Generic.IReadOnlyList{`0})">
+            <summary>
+            Inserts rows with PostgreSQL binary COPY. Column CLR types must match the table's column types.
+            </summary>
+            <param name="lease">Lease inside a transaction.</param>
+            <param name="entities">Prepared entities.</param>
+            <returns>Rows inserted.</returns>
+        </member>
+        <member name="M:Durable.Postgres.PostgresRepository`1.BulkInsertCoreAsync(Durable.Sql.ConnectionLease,System.Collections.Generic.IReadOnlyList{`0},System.Threading.CancellationToken)">
+            <summary>
+            Inserts rows with PostgreSQL binary COPY.
+            </summary>
+            <param name="lease">Lease inside a transaction.</param>
+            <param name="entities">Prepared entities.</param>
+            <param name="token">Cancellation token.</param>
+            <returns>Rows inserted.</returns>
+        </member>
+        <member name="T:Durable.Postgres.PostgresRepositorySettings">
+            <summary>
+            Connection settings for PostgreSQL repositories
+            </summary>
+        </member>
+        <member name="P:Durable.Postgres.PostgresRepositorySettings.Type">
+            <summary>
+            The type of repository
+            </summary>
+        </member>
+        <member name="P:Durable.Postgres.PostgresRepositorySettings.ConnectionTimeout">
+            <summary>
+            The connection timeout in seconds. Default: null (uses PostgreSQL default of 15 seconds)
+            </summary>
+        </member>
+        <member name="P:Durable.Postgres.PostgresRepositorySettings.CommandTimeout">
+            <summary>
+            The command timeout in seconds. Default: null (uses PostgreSQL default of 30 seconds)
+            </summary>
+        </member>
+        <member name="P:Durable.Postgres.PostgresRepositorySettings.MinPoolSize">
+            <summary>
+            The minimum pool size. Default: null (uses PostgreSQL default of 0)
+            </summary>
+        </member>
+        <member name="P:Durable.Postgres.PostgresRepositorySettings.MaxPoolSize">
+            <summary>
+            The maximum pool size. Default: null (uses PostgreSQL default of 100)
+            </summary>
+        </member>
+        <member name="P:Durable.Postgres.PostgresRepositorySettings.Pooling">
+            <summary>
+            Whether to use connection pooling. Default: null (uses PostgreSQL default of true)
+            </summary>
+        </member>
+        <member name="P:Durable.Postgres.PostgresRepositorySettings.SslMode">
+            <summary>
+            The SSL mode. Default: null (uses PostgreSQL default)
+            </summary>
+        </member>
+        <member name="M:Durable.Postgres.PostgresRepositorySettings.#ctor">
+            <summary>
+            Initializes a new instance of the PostgresRepositorySettings class
+            </summary>
+        </member>
+        <member name="M:Durable.Postgres.PostgresRepositorySettings.Parse(System.String)">
+            <summary>
+            Parses a PostgreSQL connection string and returns a PostgresRepositorySettings instance
+            </summary>
+            <param name="connectionString">The connection string to parse</param>
+            <returns>A PostgresRepositorySettings instance</returns>
+            <exception cref="T:System.ArgumentNullException">Thrown when connectionString is null</exception>
+            <exception cref="T:System.ArgumentException">Thrown when connectionString is empty or whitespace, or when the connection string is invalid</exception>
+        </member>
+        <member name="M:Durable.Postgres.PostgresRepositorySettings.BuildConnectionString">
+            <summary>
+            Builds a PostgreSQL connection string from the current settings
+            </summary>
+            <returns>A PostgreSQL connection string</returns>
+            <exception cref="T:System.InvalidOperationException">Thrown when required properties (Hostname, Database) are null or empty</exception>
+        </member>
+    </members>
+</doc>
+>>>>>>> origin/main

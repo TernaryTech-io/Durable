@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <?xml version="1.0"?>
 <doc>
     <assembly>
@@ -4043,3 +4044,343 @@
         </member>
     </members>
 </doc>
+=======
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Durable.SqlServer</name>
+    </assembly>
+    <members>
+        <member name="T:Durable.SqlServer.SqlServerConnectionFactory">
+            <summary>
+            Opens SQL Server connections, relying on SqlClient's built-in pooling.
+            Thread safety: safe for concurrent use.
+            </summary>
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerConnectionFactory.ConnectionString">
+            <summary>
+            Gets the connection string. Never null.
+            </summary>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerConnectionFactory.#ctor(System.String,System.Nullable{System.Int32})">
+            <summary>
+            Instantiates the factory.
+            </summary>
+            <param name="connectionString">SqlClient connection string. Must not be null.</param>
+            <param name="maxConcurrentConnections">Optional cap on concurrently open connections; null for none.</param>
+            <exception cref="T:System.ArgumentNullException">Thrown when connectionString is null.</exception>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerConnectionFactory.CreateConnection">
+            <inheritdoc />
+        </member>
+        <member name="T:Durable.SqlServer.SqlServerDataTypeConverter">
+            <summary>
+            SQL Server value conversion. SqlClient handles most types natively; unsigned integers are widened to the next
+            signed type SQL Server supports, and <see cref="T:System.TimeSpan"/> values are stored as BIGINT ticks because the TIME type
+            cannot hold durations of 24 hours or more.
+            Thread safety: stateless; safe for concurrent use.
+            </summary>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDataTypeConverter.#ctor(System.Text.Json.JsonSerializerOptions)">
+            <summary>
+            Instantiates the converter.
+            </summary>
+            <param name="jsonOptions">JSON options for JSON columns; null uses the defaults.</param>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDataTypeConverter.ToDatabaseCore(System.Object,System.Type,Durable.ColumnMetadata)">
+            <inheritdoc />
+        </member>
+        <member name="T:Durable.SqlServer.SqlServerDialect">
+            <summary>
+            SQL Server dialect (SQL Server 2017+). Paging uses OFFSET/FETCH, generated keys use OUTPUT INSERTED, upsert uses
+            MERGE, and <see cref="T:System.DateTime"/> parameters are sent as datetime2.
+            Thread safety: immutable; safe to share.
+            </summary>
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerDialect.Default">
+            <summary>
+            Gets the shared default instance.
+            </summary>
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerDialect.RepositoryType">
+            <inheritdoc />
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerDialect.DbSystemName">
+            <inheritdoc />
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerDialect.MaxParameters">
+            <inheritdoc />
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerDialect.RecursiveCteKeyword">
+            <inheritdoc />
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerDialect.InsertKeyStrategy">
+            <inheritdoc />
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerDialect.OrdinalCollationName">
+            <summary>
+            Gets the binary collation applied by <see cref="M:Durable.SqlServer.SqlServerDialect.OrdinalCollation(System.String)"/> for ordinal and ignore-case string matching.
+            Default: Latin1_General_100_BIN2. BIN2 collations compare Unicode code points, so the Latin1 name does not restrict the languages compared.
+            </summary>
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerDialect.StringCastType">
+            <inheritdoc />
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerDialect.MaxIdentifierLength">
+            <inheritdoc />
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerDialect.ScriptBatchSeparator">
+            <summary>
+            Gets "GO": generated scripts separate statements into batches so later statements can reference columns added earlier.
+            </summary>
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerDialect.CurrentUtcTimestampSql">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.#ctor(Durable.Sql.IDataTypeConverter,System.String)">
+            <summary>
+            Instantiates the dialect.
+            </summary>
+            <param name="converter">Converter; null uses <see cref="T:Durable.SqlServer.SqlServerDataTypeConverter"/>.</param>
+            <param name="ordinalCollation">Binary collation for ordinal string matching. Default: Latin1_General_100_BIN2 (code-point order).</param>
+            <exception cref="T:System.ArgumentException">Thrown when ordinalCollation is not a simple collation name.</exception>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.OrdinalCollation(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.ConfigureParameter(System.Data.Common.DbParameter,Durable.Sql.SqlParameterValue)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.BooleanLiteral(System.Boolean)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.Concat(System.Collections.Generic.IReadOnlyList{System.String})">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.IsEmptyString(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.TranslateFunction(Durable.Query.QueryFunction,System.Collections.Generic.IReadOnlyList{System.String})">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.AppendPaging(Durable.Sql.SqlStatementBuilder,System.Nullable{System.Int32},System.Nullable{System.Int32},System.Boolean)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.AppendUpsert(Durable.Sql.SqlStatementBuilder,Durable.EntityMetadata,System.Collections.Generic.IReadOnlyList{Durable.ColumnMetadata},System.Collections.Generic.IReadOnlyList{System.String},System.Collections.Generic.IReadOnlyList{Durable.ColumnMetadata},System.Collections.Generic.IReadOnlyList{Durable.ColumnMetadata},System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.CreateSavepointSql(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.RollbackToSavepointSql(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.ReleaseSavepointSql(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.GetColumnType(Durable.ColumnMetadata)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.AppendCreateTable(Durable.Sql.SqlStatementBuilder,Durable.EntityMetadata)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.TableExistsQuery(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.ColumnNamesQuery(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.IndexNamesQuery(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.CreateIndexSql(System.String,System.String,System.Collections.Generic.IReadOnlyList{System.String},System.Boolean,System.Collections.Generic.IReadOnlyList{System.String})">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.DropIndexSql(System.String,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.ColumnSchemaQuery(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.IndexSchemaQuery(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.NormalizeColumnType(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.DropColumnSql(System.String,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.CreateMigrationHistoryTableSql(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.AcquireMigrationLockSql(System.String,System.Int32)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.ReleaseMigrationLockSql(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerDialect.IdentifierOpen">
+            <inheritdoc />
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerDialect.IdentifierClose">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.IsAdditionalLikeWildcard(System.Char)">
+            <inheritdoc />
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.AutoIncrementColumnType(Durable.ColumnMetadata,System.Boolean)">
+            <inheritdoc />
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerDialect.AddColumnKeyword">
+            <summary>
+            Gets "ADD": SQL Server's ALTER TABLE does not use the COLUMN keyword when adding columns.
+            </summary>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.StringLiteral(System.String)">
+            <summary>
+            Renders a Unicode string literal (N'...').
+            </summary>
+            <param name="value">Text. Must not be null.</param>
+            <returns>The literal.</returns>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerDialect.BinaryLiteral(System.Byte[])">
+            <summary>
+            Renders a binary literal (0x...).
+            </summary>
+            <param name="value">Bytes. Must not be null.</param>
+            <returns>The literal.</returns>
+        </member>
+        <member name="T:Durable.SqlServer.SqlServerRepository`1">
+            <summary>
+            SQL Server repository for <typeparamref name="T"/>. All behavior comes from <see cref="T:Durable.Sql.SqlRepository`1"/>; this class
+            supplies the SQL Server dialect and connection handling, <see cref="T:Microsoft.Data.SqlClient.SqlBulkCopy"/> bulk insert, and database creation.
+            Thread safety: safe for concurrent use.
+            </summary>
+            <typeparam name="T">Entity type.</typeparam>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerRepository`1.#ctor(System.String,Durable.Sql.SqlRepositoryOptions)">
+            <summary>
+            Creates a repository from a connection string. The repository owns its connection factory and disposes it.
+            </summary>
+            <param name="connectionString">SqlClient connection string. Must not be null.</param>
+            <param name="options">Options; null uses defaults.</param>
+            <exception cref="T:System.ArgumentNullException">Thrown when connectionString is null.</exception>
+            <exception cref="T:System.InvalidOperationException">Thrown when <typeparamref name="T"/> has no primary key.</exception>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerRepository`1.#ctor(Durable.SqlServer.SqlServerRepositorySettings,Durable.Sql.SqlRepositoryOptions)">
+            <summary>
+            Creates a repository from settings. The repository owns its connection factory and disposes it.
+            </summary>
+            <param name="settings">Settings. Must not be null.</param>
+            <param name="options">Options; null uses defaults.</param>
+            <exception cref="T:System.ArgumentNullException">Thrown when settings is null.</exception>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerRepository`1.#ctor(Durable.Sql.IConnectionFactory,Durable.Sql.SqlRepositoryOptions)">
+            <summary>
+            Creates a repository on a shared connection factory. The factory is not disposed with the repository.
+            </summary>
+            <param name="connectionFactory">Factory producing <see cref="T:Microsoft.Data.SqlClient.SqlConnection"/> instances. Must not be null.</param>
+            <param name="options">Options; null uses defaults.</param>
+            <exception cref="T:System.ArgumentNullException">Thrown when connectionFactory is null.</exception>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerRepository`1.CreateDatabaseIfNotExists">
+            <summary>
+            Creates the database named in the settings when it does not exist, connecting to master.
+            </summary>
+            <exception cref="T:System.InvalidOperationException">Thrown when no database name is configured.</exception>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerRepository`1.CreateDatabaseIfNotExistsAsync(System.Threading.CancellationToken)">
+            <summary>
+            Creates the database named in the settings when it does not exist.
+            </summary>
+            <param name="token">Cancellation token.</param>
+            <returns>A task.</returns>
+            <exception cref="T:System.InvalidOperationException">Thrown when no database name is configured.</exception>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerRepository`1.BulkInsertCore(Durable.Sql.ConnectionLease,System.Collections.Generic.IReadOnlyList{`0})">
+            <summary>
+            Inserts rows with <see cref="T:Microsoft.Data.SqlClient.SqlBulkCopy"/> inside the transaction.
+            </summary>
+            <param name="lease">Lease inside a transaction.</param>
+            <param name="entities">Prepared entities.</param>
+            <returns>Rows inserted.</returns>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerRepository`1.BulkInsertCoreAsync(Durable.Sql.ConnectionLease,System.Collections.Generic.IReadOnlyList{`0},System.Threading.CancellationToken)">
+            <summary>
+            Inserts rows with <see cref="T:Microsoft.Data.SqlClient.SqlBulkCopy"/> inside the transaction.
+            </summary>
+            <param name="lease">Lease inside a transaction.</param>
+            <param name="entities">Prepared entities.</param>
+            <param name="token">Cancellation token.</param>
+            <returns>Rows inserted.</returns>
+        </member>
+        <member name="T:Durable.SqlServer.SqlServerRepositorySettings">
+            <summary>
+            Connection settings for SQL Server repositories
+            </summary>
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerRepositorySettings.Type">
+            <summary>
+            The type of repository
+            </summary>
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerRepositorySettings.ConnectionTimeout">
+            <summary>
+            The connection timeout in seconds. Default: null (uses SQL Server default of 15 seconds)
+            </summary>
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerRepositorySettings.MinPoolSize">
+            <summary>
+            The minimum pool size. Default: null (uses SQL Server default of 0)
+            </summary>
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerRepositorySettings.MaxPoolSize">
+            <summary>
+            The maximum pool size. Default: null (uses SQL Server default of 100)
+            </summary>
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerRepositorySettings.Pooling">
+            <summary>
+            Whether to use connection pooling. Default: null (uses SQL Server default of true)
+            </summary>
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerRepositorySettings.Encrypt">
+            <summary>
+            Whether to encrypt the connection. Default: null (uses SQL Server default)
+            </summary>
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerRepositorySettings.TrustServerCertificate">
+            <summary>
+            Whether to trust the server certificate. Default: null (uses SQL Server default of false)
+            </summary>
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerRepositorySettings.IntegratedSecurity">
+            <summary>
+            Whether to use integrated security (Windows authentication). Default: null (uses SQL Server default of false)
+            </summary>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerRepositorySettings.#ctor">
+            <summary>
+            Initializes a new instance of the SqlServerRepositorySettings class
+            </summary>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerRepositorySettings.Parse(System.String)">
+            <summary>
+            Parses a SQL Server connection string and returns a SqlServerRepositorySettings instance
+            </summary>
+            <param name="connectionString">The connection string to parse</param>
+            <returns>A SqlServerRepositorySettings instance</returns>
+            <exception cref="T:System.ArgumentNullException">Thrown when connectionString is null</exception>
+            <exception cref="T:System.ArgumentException">Thrown when connectionString is empty or whitespace, or when the connection string is invalid</exception>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerRepositorySettings.BuildConnectionString">
+            <summary>
+            Builds a SQL Server connection string from the current settings
+            </summary>
+            <returns>A SQL Server connection string</returns>
+            <exception cref="T:System.InvalidOperationException">Thrown when required properties are missing</exception>
+        </member>
+    </members>
+</doc>
+>>>>>>> origin/main

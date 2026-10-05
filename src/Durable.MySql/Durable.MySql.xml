@@ -4,30 +4,28 @@
         <name>Durable.MySql</name>
     </assembly>
     <members>
-        <member name="T:Durable.MySql.FullTextSearchMode">
+        <member name="T:Durable.MySql.MySqlConnectionFactory">
             <summary>
-            Specifies the search mode for MySQL full-text search operations.
+            Opens MySQL connections through MySqlConnector's pooling, either from a connection string or a caller-supplied
+            <see cref="T:MySqlConnector.MySqlDataSource"/>.
+            Thread safety: safe for concurrent use.
             </summary>
         </member>
-        <member name="F:Durable.MySql.FullTextSearchMode.Natural">
+        <member name="P:Durable.MySql.MySqlConnectionFactory.DataSource">
             <summary>
-            Natural language search mode (default). Interprets the search string as a phrase in natural human language.
-            Words are stemmed and stop words are ignored. Results are ranked by relevance.
+            Gets the data source supplied by the caller, or null when the factory uses a connection string
+            (connections then come from MySqlConnector's shared per-connection-string pool).
             </summary>
         </member>
-        <member name="F:Durable.MySql.FullTextSearchMode.NaturalWithQueryExpansion">
+        <member name="P:Durable.MySql.MySqlConnectionFactory.ConnectionString">
             <summary>
-            Natural language search mode with query expansion. First performs a natural language search,
-            then runs a second search that includes the most relevant documents from the first search.
-            Useful for finding related documents even if they don't contain the exact search terms.
+            Gets the connection string, or null when the factory wraps a caller-supplied data source.
             </summary>
         </member>
-        <member name="F:Durable.MySql.FullTextSearchMode.Boolean">
+        <member name="M:Durable.MySql.MySqlConnectionFactory.#ctor(System.String,System.Nullable{System.Int32})">
             <summary>
-            Boolean search mode. Allows special operators in the search string:
-            + (must contain), - (must not contain), * (wildcard), "" (exact phrase),
-            &gt; (increase relevance), &lt; (decrease relevance), () (grouping), ~ (negation).
-            Results are not automatically ranked by relevance.
+            Instantiates the factory from a connection string. Connections share MySqlConnector's pool for that connection
+            string, so any number of factories and repositories with the same connection string use one pool.
             </summary>
         </member>
         <member name="F:Durable.MySql.FullTextSearchMode.BooleanWithQueryExpansion">
@@ -115,13 +113,12 @@
             </summary>
             <typeparam name="T">The entity type that contains collection navigation properties</typeparam>
         </member>
-        <member name="M:Durable.MySql.MySqlCollectionLoader`1.#ctor(Durable.ISanitizer,Durable.IDataTypeConverter,Durable.Metadata.IEntityMetadataProvider)">
+        <member name="M:Durable.MySql.MySqlCollectionLoader`1.#ctor(Durable.ISanitizer,Durable.IDataTypeConverter)">
             <summary>
             Initializes a new instance of the MySqlCollectionLoader class.
             </summary>
             <param name="sanitizer">The sanitizer for SQL identifiers</param>
             <param name="dataTypeConverter">The data type converter for database values</param>
-            <param name="metadataProvider">The entity metadata provider.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when sanitizer or dataTypeConverter is null</exception>
         </member>
         <member name="M:Durable.MySql.MySqlCollectionLoader`1.LoadCollections(System.Collections.Generic.List{`0},System.Collections.Generic.List{Durable.MySql.MySqlIncludeInfo},MySqlConnector.MySqlConnection,Durable.ITransaction)">
@@ -247,582 +244,173 @@
             <param name="options">Optional connection pool configuration settings. Uses default settings if null.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when connectionString is null.</exception>
         </member>
-        <member name="M:Durable.MySql.MySqlConnectionFactory.GetConnection">
+        <member name="M:Durable.MySql.MySqlConnectionFactory.#ctor(MySqlConnector.MySqlDataSource,System.Nullable{System.Int32})">
             <summary>
-            Retrieves a database connection from the connection pool synchronously.
+            Instantiates the factory over an existing data source, which is not disposed with the factory.
             </summary>
-            <returns>A ready-to-use MySQL database connection from the pool.</returns>
-            <exception cref="T:System.ObjectDisposedException">Thrown when the factory has been disposed.</exception>
+            <param name="dataSource">Data source. Must not be null.</param>
+            <param name="maxConcurrentConnections">Optional cap on concurrently open connections; null for none.</param>
+            <exception cref="T:System.ArgumentNullException">Thrown when dataSource is null.</exception>
         </member>
-        <member name="M:Durable.MySql.MySqlConnectionFactory.GetConnectionAsync(System.Threading.CancellationToken)">
-            <summary>
-            Retrieves a database connection from the connection pool asynchronously.
-            </summary>
-            <param name="cancellationToken">A cancellation token to cancel the operation if needed.</param>
-            <returns>A task representing the asynchronous operation that returns a ready-to-use MySQL database connection from the pool.</returns>
-            <exception cref="T:System.ObjectDisposedException">Thrown when the factory has been disposed.</exception>
-            <exception cref="T:System.OperationCanceledException">Thrown when the operation is cancelled via the cancellation token.</exception>
-        </member>
-        <member name="M:Durable.MySql.MySqlConnectionFactory.ReturnConnection(System.Data.Common.DbConnection)">
-            <summary>
-            Returns a database connection to the connection pool for reuse.
-            </summary>
-            <param name="connection">The database connection to return to the pool. Null connections are safely ignored.</param>
-        </member>
-        <member name="M:Durable.MySql.MySqlConnectionFactory.ReturnConnectionAsync(System.Data.Common.DbConnection)">
-            <summary>
-            Returns a database connection to the connection pool for reuse asynchronously.
-            </summary>
-            <param name="connection">The database connection to return to the pool. Null connections are safely ignored.</param>
-            <returns>A task representing the asynchronous return operation.</returns>
-        </member>
-        <member name="M:Durable.MySql.MySqlConnectionFactory.Dispose">
-            <summary>
-            Disposes of the connection factory and releases all managed resources including the connection pool.
-            All connections in the pool will be closed and disposed.
-            </summary>
-        </member>
-        <member name="T:Durable.MySql.MySqlConnectionFactoryExtensions">
-            <summary>
-            Extension methods for MySQL connection factory to provide convenient setup options.
-            </summary>
-        </member>
-        <member name="M:Durable.MySql.MySqlConnectionFactoryExtensions.CreateMySqlFactory(System.String,System.String,System.String,System.String,System.UInt32,System.Boolean,System.UInt32,System.UInt32,System.UInt32,System.UInt32,System.String)">
-            <summary>
-            Creates a MySQL connection factory with common connection string parameters.
-            </summary>
-            <param name="server">The MySQL server hostname or IP address</param>
-            <param name="database">The database name</param>
-            <param name="userId">The user ID for authentication</param>
-            <param name="password">The password for authentication</param>
-            <param name="port">The port number (default is 3306)</param>
-            <param name="pooling">Whether to enable connection pooling (default is true)</param>
-            <param name="minPoolSize">Minimum pool size (default is 0)</param>
-            <param name="maxPoolSize">Maximum pool size (default is 100)</param>
-            <param name="connectionTimeout">Connection timeout in seconds (default is 30)</param>
-            <param name="commandTimeout">Command timeout in seconds (default is 30)</param>
-            <param name="sslMode">SSL mode for secure connections (default is Preferred)</param>
-            <returns>A configured MySQL connection factory</returns>
-        </member>
-        <member name="M:Durable.MySql.MySqlConnectionFactoryExtensions.CreateLocalMySqlFactory(System.String,System.String,System.String,System.String,System.UInt32)">
-            <summary>
-            Creates a MySQL connection factory for local development with default settings.
-            </summary>
-            <param name="database">The database name</param>
-            <param name="userId">The user ID (default is "root")</param>
-            <param name="password">The password (default is empty)</param>
-            <param name="server">The server (default is "localhost")</param>
-            <param name="port">The port (default is 3306)</param>
-            <returns>A configured MySQL connection factory for local development</returns>
-        </member>
-        <member name="M:Durable.MySql.MySqlConnectionFactoryExtensions.CreateProductionMySqlFactory(System.String,System.String,System.String,System.String,System.UInt32)">
-            <summary>
-            Creates a MySQL connection factory configured for production use with recommended settings.
-            </summary>
-            <param name="server">The MySQL server hostname</param>
-            <param name="database">The database name</param>
-            <param name="userId">The user ID for authentication</param>
-            <param name="password">The password for authentication</param>
-            <param name="port">The port number (default is 3306)</param>
-            <returns>A configured MySQL connection factory optimized for production</returns>
-        </member>
-        <member name="T:Durable.MySql.MySqlConnectionResult">
-            <summary>
-            Internal helper class that manages the lifecycle of MySQL connections and commands.
-            Ensures proper disposal of database resources.
-            </summary>
-        </member>
-        <member name="P:Durable.MySql.MySqlConnectionResult.Connection">
-            <summary>
-            Gets the MySQL connection associated with this result.
-            </summary>
-        </member>
-        <member name="P:Durable.MySql.MySqlConnectionResult.Command">
-            <summary>
-            Gets the MySQL command associated with this result.
-            </summary>
-        </member>
-        <member name="P:Durable.MySql.MySqlConnectionResult.ShouldDisposeConnection">
-            <summary>
-            Gets a value indicating whether this connection result should dispose the connection when disposed.
-            </summary>
-        </member>
-        <member name="M:Durable.MySql.MySqlConnectionResult.#ctor(MySqlConnector.MySqlConnection,MySqlConnector.MySqlCommand,System.Boolean)">
-            <summary>
-            Initializes a new instance of the MySqlConnectionResult.
-            </summary>
-            <param name="connection">The MySQL connection</param>
-            <param name="command">The MySQL command</param>
-            <param name="shouldDisposeConnection">Whether to dispose the connection when this object is disposed</param>
-            <exception cref="T:System.ArgumentNullException">Thrown when connection or command is null</exception>
-        </member>
-        <member name="M:Durable.MySql.MySqlConnectionResult.Create(MySqlConnector.MySqlConnection,MySqlConnector.MySqlCommand)">
-            <summary>
-            Creates a new MySqlConnectionResult with a connection and command that should be disposed together.
-            </summary>
-            <param name="connection">The MySQL connection</param>
-            <param name="command">The MySQL command</param>
-            <returns>A new MySqlConnectionResult instance</returns>
-            <exception cref="T:System.ArgumentNullException">Thrown when connection or command is null</exception>
-        </member>
-        <member name="M:Durable.MySql.MySqlConnectionResult.CreateWithManagedConnection(MySqlConnector.MySqlConnection,MySqlConnector.MySqlCommand)">
-            <summary>
-            Creates a new MySqlConnectionResult where the connection should not be disposed (e.g., when using transactions).
-            </summary>
-            <param name="connection">The MySQL connection</param>
-            <param name="command">The MySQL command</param>
-            <returns>A new MySqlConnectionResult instance</returns>
-            <exception cref="T:System.ArgumentNullException">Thrown when connection or command is null</exception>
-        </member>
-        <member name="M:Durable.MySql.MySqlConnectionResult.Dispose">
-            <summary>
-            Disposes the command and optionally the connection based on the ShouldDisposeConnection setting.
-            </summary>
-        </member>
-        <member name="M:Durable.MySql.MySqlConnectionResult.Dispose(System.Boolean)">
-            <summary>
-            Performs the actual disposal of resources.
-            </summary>
-            <param name="disposing">True if disposing managed resources, false if called from finalizer</param>
-        </member>
-        <member name="M:Durable.MySql.MySqlConnectionResult.Finalize">
-            <summary>
-            Finalizer to ensure resources are cleaned up if Dispose is not called.
-            </summary>
-        </member>
-        <member name="T:Durable.MySql.MySqlCycleDetector">
-            <summary>
-            Detects cycles in navigation property includes to prevent infinite loops in MySQL queries.
-            Ensures that Include() chains don't create circular references that would cause stack overflow.
-            </summary>
-        </member>
-        <member name="M:Durable.MySql.MySqlCycleDetector.#ctor">
-            <summary>
-            Initializes a new instance of the MySqlCycleDetector.
-            </summary>
-        </member>
-        <member name="M:Durable.MySql.MySqlCycleDetector.WouldCreateCycle(System.String)">
-            <summary>
-            Checks if adding the specified path would create a cycle.
-            </summary>
-            <param name="path">The navigation property path to check</param>
-            <returns>True if adding this path would create a cycle, false otherwise</returns>
-            <exception cref="T:System.ArgumentNullException">Thrown when path is null</exception>
-            <exception cref="T:System.ArgumentException">Thrown when path is empty or whitespace</exception>
-        </member>
-        <member name="M:Durable.MySql.MySqlCycleDetector.EnterPath(System.String)">
-            <summary>
-            Adds a path to the current processing stack and visited paths.
-            </summary>
-            <param name="path">The navigation property path to add</param>
-            <exception cref="T:System.ArgumentNullException">Thrown when path is null</exception>
-            <exception cref="T:System.ArgumentException">Thrown when path is empty or whitespace</exception>
-            <exception cref="T:System.InvalidOperationException">Thrown when adding this path would create a cycle</exception>
-        </member>
-        <member name="M:Durable.MySql.MySqlCycleDetector.ExitPath">
-            <summary>
-            Removes the most recently added path from the current processing stack.
-            </summary>
-            <exception cref="T:System.InvalidOperationException">Thrown when there are no paths to exit</exception>
-        </member>
-        <member name="M:Durable.MySql.MySqlCycleDetector.GetCurrentPath">
-            <summary>
-            Gets the current navigation path as a dot-separated string.
-            </summary>
-            <returns>The current path or empty string if no path is active</returns>
-        </member>
-        <member name="M:Durable.MySql.MySqlCycleDetector.Reset">
-            <summary>
-            Clears all tracked paths and resets the detector to initial state.
-            </summary>
-        </member>
-        <member name="M:Durable.MySql.MySqlCycleDetector.GetCurrentDepth">
-            <summary>
-            Gets the depth of the current navigation path.
-            </summary>
-            <returns>The number of navigation levels deep</returns>
-        </member>
-        <member name="M:Durable.MySql.MySqlCycleDetector.HasActivePaths">
-            <summary>
-            Checks if the detector has any active paths.
-            </summary>
-            <returns>True if there are active paths, false otherwise</returns>
-        </member>
-        <member name="M:Durable.MySql.MySqlCycleDetector.GetVisitedPaths">
-            <summary>
-            Gets a copy of all visited paths for debugging purposes.
-            </summary>
-            <returns>A collection of all visited navigation paths</returns>
-        </member>
-        <member name="M:Durable.MySql.MySqlCycleDetector.NormalizePath(System.String)">
-            <summary>
-            Normalizes a navigation property path by trimming and standardizing format.
-            </summary>
-            <param name="path">The path to normalize</param>
-            <returns>The normalized path</returns>
-        </member>
-        <member name="M:Durable.MySql.MySqlCycleDetector.BuildFullPath(System.String)">
-            <summary>
-            Builds the full path including all current stack elements and the new path.
-            </summary>
-            <param name="newPath">The new path to append</param>
-            <returns>The full navigation path</returns>
+        <member name="M:Durable.MySql.MySqlConnectionFactory.CreateConnection">
+            <inheritdoc />
         </member>
         <member name="T:Durable.MySql.MySqlDataTypeConverter">
             <summary>
-            MySQL-specific data type converter that handles MySQL's unique type representations.
-            Provides special handling for TINYINT(1) booleans, JSON columns, unsigned integers, ENUM/SET types, and MySQL datetime types.
+            MySQL value conversion. MySqlConnector handles most types natively; <see cref="T:System.DateTimeOffset"/> values are stored
+            as UTC <c>DATETIME</c> values because MySQL has no offset-aware type, GUIDs are stored as 36-character strings,
+            and <see cref="T:System.TimeSpan"/> values are stored as BIGINT ticks so durations beyond MySQL's TIME range round-trip.
+            Thread safety: stateless; safe for concurrent use.
             </summary>
-        </member>
-        <member name="P:Durable.MySql.MySqlDataTypeConverter.MetadataProvider">
-            <summary>
-            Gets the metadata provider used to resolve property mapping hints.
-            </summary>
-        </member>
-        <member name="M:Durable.MySql.MySqlDataTypeConverter.#ctor(Durable.Metadata.IEntityMetadataProvider)">
-            <summary>
-            Initializes a new instance of the <see cref="T:Durable.MySql.MySqlDataTypeConverter"/> class.
-            </summary>
-            <param name="metadataProvider">The metadata provider used to resolve property mapping hints. Defaults to <see cref="P:Durable.DurableConfiguration.DefaultMetadataProvider"/>.</param>
         </member>
         <member name="M:Durable.MySql.MySqlDataTypeConverter.ConvertToDatabase(System.Object,System.Type,System.Reflection.PropertyInfo)">
             <summary>
-            Converts a .NET object to its MySQL database parameter representation.
-            Preserves native types where possible for proper MySQL parameter binding.
+            Instantiates the converter.
             </summary>
-            <param name="value">The value to convert.</param>
-            <param name="targetType">The target database type.</param>
-            <param name="propertyInfo">Optional property information for attribute-based conversion hints.</param>
-            <returns>The MySQL-compatible representation of the value.</returns>
+            <param name="jsonOptions">JSON options for JSON columns; null uses the defaults.</param>
         </member>
-        <member name="M:Durable.MySql.MySqlDataTypeConverter.ConvertFromDatabase(System.Object,System.Type,System.Reflection.PropertyInfo)">
+        <member name="M:Durable.MySql.MySqlDataTypeConverter.ToDatabaseCore(System.Object,System.Type,Durable.ColumnMetadata)">
+            <inheritdoc />
+        </member>
+        <member name="T:Durable.MySql.MySqlDialect">
             <summary>
-            Converts a MySQL database value to its .NET type representation.
-            Handles MySQL-specific types including TINYINT(1) booleans, JSON columns, and unsigned integers.
+            MySQL dialect (MySQL 8.0.31+ for INTERSECT/EXCEPT; 8.0.19+ for the upsert row alias).
+            Thread safety: immutable; safe to share.
             </summary>
-            <param name="value">The database value to convert.</param>
-            <param name="targetType">The target .NET type.</param>
-            <param name="propertyInfo">Optional property information for attribute-based conversion hints.</param>
-            <returns>The .NET object representation of the database value.</returns>
         </member>
-        <member name="M:Durable.MySql.MySqlDataTypeConverter.CanConvert(System.Type)">
+        <member name="P:Durable.MySql.MySqlDialect.Default">
             <summary>
-            Determines whether the converter can handle the specified type.
+            Gets the shared default instance.
             </summary>
-            <param name="type">The type to check for conversion support.</param>
-            <returns>True if the type can be converted; otherwise, false.</returns>
         </member>
-        <member name="M:Durable.MySql.MySqlDataTypeConverter.GetDatabaseTypeString(System.Type,System.Reflection.PropertyInfo)">
-            <summary>
-            Gets the appropriate MySQL database type string for the specified .NET type.
-            </summary>
-            <param name="type">The .NET type.</param>
-            <param name="propertyInfo">Optional property information for attribute-based type mapping hints.</param>
-            <returns>The MySQL type string (e.g., "VARCHAR(255)", "INT", "DATETIME", "JSON").</returns>
+        <member name="P:Durable.MySql.MySqlDialect.RepositoryType">
+            <inheritdoc />
         </member>
-        <member name="T:Durable.MySql.MySqlEntityMapper`1">
-            <summary>
-            Advanced entity mapping capabilities for MySQL data readers.
-            Handles complex type conversions, navigation properties, and relationship mapping
-            with support for Include operations and nested entity graphs.
-            </summary>
-            <typeparam name="T">The primary entity type being mapped</typeparam>
-        </member>
-        <member name="M:Durable.MySql.MySqlEntityMapper`1.#ctor(Durable.IDataTypeConverter,System.Collections.Generic.Dictionary{System.String,System.Reflection.PropertyInfo},Durable.ISanitizer,Durable.Metadata.IEntityMetadataProvider)">
+        <member name="M:Durable.MySql.MySqlEntityMapper`1.#ctor(Durable.IDataTypeConverter,System.Collections.Generic.Dictionary{System.String,System.Reflection.PropertyInfo},Durable.ISanitizer)">
             <summary>
             Initializes a new instance of the MySqlEntityMapper class.
             </summary>
             <param name="dataTypeConverter">The data type converter for handling complex type conversions</param>
             <param name="baseColumnMappings">Column mappings for the primary entity type</param>
             <param name="sanitizer">The sanitizer for handling SQL values and identifiers</param>
-            <param name="metadataProvider">The entity metadata provider.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when any required parameter is null</exception>
         </member>
-        <member name="M:Durable.MySql.MySqlEntityMapper`1.MapJoinedResults(MySqlConnector.MySqlDataReader,Durable.MySql.MySqlJoinBuilder.MySqlJoinResult,System.Collections.Generic.List{Durable.MySql.MySqlIncludeInfo})">
-            <summary>
-            Maps a MySQL data reader to a list of entities, handling joined results and navigation properties.
-            </summary>
-            <param name="reader">The MySQL data reader containing the query results</param>
-            <param name="joinResult">Join metadata for mapping related entities</param>
-            <param name="includes">Navigation property information for Include operations</param>
-            <returns>A list of mapped entities with populated navigation properties</returns>
-            <exception cref="T:System.ArgumentNullException">Thrown when reader is null</exception>
-            <exception cref="T:System.InvalidOperationException">Thrown when mapping encounters errors</exception>
+        <member name="P:Durable.MySql.MySqlDialect.MaxParameters">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlEntityMapper`1.MapSimpleResults(MySqlConnector.MySqlDataReader)">
-            <summary>
-            Maps a simple MySQL data reader to a list of entities without joins or navigation properties.
-            Provides enhanced type conversion compared to basic mapping implementations.
-            </summary>
-            <param name="reader">The MySQL data reader containing the query results</param>
-            <returns>A list of mapped entities</returns>
-            <exception cref="T:System.ArgumentNullException">Thrown when reader is null</exception>
-            <exception cref="T:System.InvalidOperationException">Thrown when mapping encounters errors</exception>
+        <member name="P:Durable.MySql.MySqlDialect.InsertKeyStrategy">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlEntityMapper`1.MapJoinedResultsAsync(MySqlConnector.MySqlDataReader,Durable.MySql.MySqlJoinBuilder.MySqlJoinResult,System.Collections.Generic.List{Durable.MySql.MySqlIncludeInfo},System.Threading.CancellationToken)">
-            <summary>
-            Maps a MySQL data reader to a list of entities asynchronously, handling joined results and navigation properties.
-            </summary>
-            <param name="reader">The MySQL data reader containing the query results</param>
-            <param name="joinResult">Join metadata for mapping related entities</param>
-            <param name="includes">Navigation property information for Include operations</param>
-            <param name="cancellationToken">Cancellation token for the async operation</param>
-            <returns>A list of mapped entities with populated navigation properties</returns>
-            <exception cref="T:System.ArgumentNullException">Thrown when reader is null</exception>
-            <exception cref="T:System.InvalidOperationException">Thrown when mapping encounters errors</exception>
+        <member name="P:Durable.MySql.MySqlDialect.LastInsertIdSql">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlEntityMapper`1.MapSimpleResultsAsync(MySqlConnector.MySqlDataReader,System.Threading.CancellationToken)">
-            <summary>
-            Maps a simple MySQL data reader to a list of entities asynchronously without joins or navigation properties.
-            Provides enhanced type conversion compared to basic mapping implementations.
-            </summary>
-            <param name="reader">The MySQL data reader containing the query results</param>
-            <param name="cancellationToken">Cancellation token for the async operation</param>
-            <returns>A list of mapped entities</returns>
-            <exception cref="T:System.ArgumentNullException">Thrown when reader is null</exception>
-            <exception cref="T:System.InvalidOperationException">Thrown when mapping encounters errors</exception>
+        <member name="P:Durable.MySql.MySqlDialect.InsertDefaultValuesClause">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlEntityMapper`1.ClearProcessingCache">
+        <member name="P:Durable.MySql.MySqlDialect.OrdinalCollationName">
             <summary>
-            Clears the internal entity processing cache. Call this between different query executions
-            to prevent issues with entity identity tracking.
+            Gets the binary collation applied by <see cref="M:Durable.MySql.MySqlDialect.OrdinalCollation(System.String)"/> for ordinal and ignore-case string matching.
+            Default: utf8mb4_bin. Columns using another character set need a matching binary collation (for example latin1_bin).
             </summary>
         </member>
-        <member name="T:Durable.MySql.MySqlExpressionParser`1">
-            <summary>
-            Parses and converts LINQ expressions to MySQL-compatible SQL strings.
-            Provides support for complex expression trees including binary operations, method calls, and member access.
-            </summary>
-            <typeparam name="T">The entity type that the expressions operate on.</typeparam>
+        <member name="P:Durable.MySql.MySqlDialect.StringCastType">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.#ctor(System.Collections.Generic.Dictionary{System.String,System.Reflection.PropertyInfo},Durable.ISanitizer,Durable.Metadata.IEntityMetadataProvider,Durable.IDataTypeConverter)">
+        <member name="M:Durable.MySql.MySqlExpressionParser`1.#ctor(System.Collections.Generic.Dictionary{System.String,System.Reflection.PropertyInfo},Durable.ISanitizer)">
             <summary>
-            Initializes a new instance of the MySqlExpressionParser with the specified column mappings and sanitizer.
+            Gets false: MySQL commits DDL implicitly, so a failed migration may leave earlier statements applied.
             </summary>
             <param name="columnMappings">A dictionary mapping property names to their corresponding database column names and PropertyInfo objects.</param>
             <param name="sanitizer">The sanitizer to use for value formatting and SQL injection prevention. Defaults to MySqlSanitizer if null.</param>
-            <param name="metadataProvider">The entity metadata provider. Uses <see cref="P:Durable.DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
-            <param name="dataTypeConverter">Optional data type converter applied to constant values the sanitizer cannot format natively (e.g. custom key types). When null, such values are formatted as before.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when columnMappings is null.</exception>
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.ParseExpression(System.Linq.Expressions.Expression)">
-            <summary>
-            Parses any expression tree and converts it to its MySQL SQL equivalent string representation.
-            </summary>
-            <param name="expression">The expression tree to parse and convert to SQL.</param>
-            <returns>A string containing the MySQL-compatible SQL representation of the expression.</returns>
-            <exception cref="T:System.NotSupportedException">Thrown when an unsupported expression type is encountered.</exception>
+        <member name="P:Durable.MySql.MySqlDialect.MaxIdentifierLength">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.ParseExpressionWithParameters(System.Linq.Expressions.Expression,System.Boolean)">
-            <summary>
-            Parses an expression tree and converts it to parameterized MySQL SQL with extracted parameters.
-            This method clears any existing parameters before parsing.
-            </summary>
-            <param name="expression">The expression tree to parse and convert to SQL.</param>
-            <param name="useParameterizedQueries">If true, extracts values as parameters; if false, embeds values directly (for backward compatibility).</param>
-            <returns>A string containing the MySQL-compatible SQL representation of the expression.</returns>
-            <exception cref="T:System.NotSupportedException">Thrown when an unsupported expression type is encountered.</exception>
+        <member name="P:Durable.MySql.MySqlDialect.CurrentUtcTimestampSql">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.GetParameters">
-            <summary>
-            Gets the parameters that were collected during the last call to ParseExpressionWithParameters.
-            </summary>
-            <returns>A list of parameter name-value pairs extracted from the expression.</returns>
+        <member name="P:Durable.MySql.MySqlDialect.ScriptBeginTransactionSql">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.GetColumnFromExpression(System.Linq.Expressions.Expression)">
+        <member name="M:Durable.MySql.MySqlDialect.#ctor(Durable.Sql.IDataTypeConverter,System.String)">
             <summary>
-            Extracts the database column name from a member expression that references an entity property.
+            Instantiates the dialect.
             </summary>
-            <param name="expression">The member expression representing a property access (e.g., p.FirstName).</param>
-            <returns>The corresponding database column name for the property.</returns>
-            <exception cref="T:System.ArgumentException">Thrown when the expression is not a valid member expression or the property is not mapped to a column.</exception>
+            <param name="converter">Converter; null uses <see cref="T:Durable.MySql.MySqlDataTypeConverter"/>.</param>
+            <param name="ordinalCollation">Binary collation for ordinal string matching; must be valid for the character set of
+            the compared columns. Default: utf8mb4_bin.</param>
+            <exception cref="T:System.ArgumentException">Thrown when ordinalCollation is not a simple collation name.</exception>
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.GetRawColumnFromExpression(System.Linq.Expressions.Expression)">
-            <summary>
-            Gets the raw column name without backticks from a member expression.
-            Used internally when backticks will be added manually.
-            </summary>
-            <param name="expression">The member expression representing a property access.</param>
-            <returns>The raw column name without backticks.</returns>
-            <exception cref="T:System.ArgumentException">Thrown when the expression is not a valid member expression or the property is not mapped to a column.</exception>
+        <member name="M:Durable.MySql.MySqlDialect.OrdinalCollation(System.String)">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.ParseUpdateExpression(System.Linq.Expressions.Expression{System.Func{`0,`0}})">
-            <summary>
-            Parses an update expression that specifies how to modify entity properties and converts it to SQL SET clause format.
-            </summary>
-            <param name="updateExpression">A lambda expression defining the property updates using member initialization syntax (e.g., p => new Person { Name = "John", Age = 30 }).</param>
-            <returns>A string containing the SQL SET clause with column assignments (e.g., "`Name` = 'John', `Age` = 30").</returns>
-            <exception cref="T:System.ArgumentException">Thrown when the expression is not a member initialization expression.</exception>
-            <exception cref="T:System.NotSupportedException">Thrown when an unsupported expression type is encountered in the update values.</exception>
+        <member name="M:Durable.MySql.MySqlDialect.BooleanLiteral(System.Boolean)">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.GetCacheCount">
-            <summary>
-            Gets the count of cached compiled expressions for this specific T type.
-            This method is useful for testing and verifying cache isolation between different entity types.
-            </summary>
-            <returns>The number of expressions currently cached for this type T</returns>
+        <member name="M:Durable.MySql.MySqlDialect.Concat(System.Collections.Generic.IReadOnlyList{System.String})">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.ClearCache">
-            <summary>
-            Clears the expression cache for this specific T type.
-            This method is useful for testing and debugging cache behavior.
-            </summary>
+        <member name="M:Durable.MySql.MySqlDialect.Divide(System.String,System.String,System.Boolean)">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.GetCacheHitCount">
-            <summary>
-            Gets the cache hit count for this specific T type.
-            This metric indicates how many times a compiled expression was retrieved from cache.
-            </summary>
-            <returns>The number of cache hits since the last cache clear</returns>
+        <member name="M:Durable.MySql.MySqlDialect.TranslateFunction(Durable.Query.QueryFunction,System.Collections.Generic.IReadOnlyList{System.String})">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.GetCacheMissCount">
-            <summary>
-            Gets the cache miss count for this specific T type.
-            This metric indicates how many times an expression had to be compiled and cached.
-            </summary>
-            <returns>The number of cache misses since the last cache clear</returns>
+        <member name="M:Durable.MySql.MySqlDialect.AppendUpsert(Durable.Sql.SqlStatementBuilder,Durable.EntityMetadata,System.Collections.Generic.IReadOnlyList{Durable.ColumnMetadata},System.Collections.Generic.IReadOnlyList{System.String},System.Collections.Generic.IReadOnlyList{Durable.ColumnMetadata},System.Collections.Generic.IReadOnlyList{Durable.ColumnMetadata},System.String)">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.GetCacheHitRate">
-            <summary>
-            Gets the cache hit rate as a percentage for this specific T type.
-            A higher rate indicates better cache effectiveness.
-            </summary>
-            <returns>The cache hit rate as a percentage (0-100), or 0 if no cache operations have occurred</returns>
+        <member name="M:Durable.MySql.MySqlDialect.GetColumnType(Durable.ColumnMetadata)">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.SetNavigationPropertyAliases(System.Collections.Generic.Dictionary{System.String,System.String})">
-            <summary>
-            Sets the navigation property to table alias mappings for Include operations.
-            This allows the expression parser to correctly resolve navigation property references in WHERE clauses.
-            </summary>
-            <param name="navigationPropertyAliases">A dictionary mapping navigation property names to their SQL table aliases</param>
+        <member name="M:Durable.MySql.MySqlDialect.TableExistsQuery(System.String)">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.ResolveNavigationPropertyChain(System.Linq.Expressions.MemberExpression)">
-            <summary>
-            Resolves navigation property chains to table alias references.
-            Supports arbitrary depth navigation (e.g., b.Author.Name, b.Author.Company.Industry, etc.),
-            self-referencing entities, multiple navigation properties to the same entity type, and circular references.
-            </summary>
-            <param name="member">The member expression representing the navigation property chain.</param>
-            <returns>The fully qualified column reference with table alias, or null if resolution fails.</returns>
+        <member name="M:Durable.MySql.MySqlDialect.ColumnNamesQuery(System.String)">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.ResolveNavigationPath(System.Collections.Generic.List{System.String})">
-            <summary>
-            Resolves a navigation property path to its fully qualified SQL column reference.
-            This method handles navigation paths of arbitrary depth by trying progressively
-            longer path segments until a match is found in the navigation property aliases.
-            </summary>
-            <param name="propertyPath">The complete property path (e.g., ["Author", "Company", "Name"]).</param>
-            <returns>The fully qualified column reference, or null if resolution fails.</returns>
+        <member name="M:Durable.MySql.MySqlDialect.IndexNamesQuery(System.String)">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.ConvertPropertyNameToColumnName(System.String)">
-            <summary>
-            Converts a C# property name to the corresponding database column name
-            </summary>
+        <member name="M:Durable.MySql.MySqlDialect.CreateIndexSql(System.String,System.String,System.Collections.Generic.IReadOnlyList{System.String},System.Boolean,System.Collections.Generic.IReadOnlyList{System.String})">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlExpressionParser`1.ConvertToSnakeCase(System.String)">
-            <summary>
-            Converts PascalCase strings to snake_case
-            </summary>
+        <member name="M:Durable.MySql.MySqlDialect.DropIndexSql(System.String,System.String)">
+            <inheritdoc />
         </member>
-        <member name="T:Durable.MySql.ExpressionStructuralEqualityComparer">
-            <summary>
-            Provides structural equality comparison for Expression trees to enable cache hits for semantically identical expressions.
-            This comparer treats two Expression objects as equal if they have the same structure, node types, and values,
-            regardless of whether they are the same object instance.
-            </summary>
+        <member name="M:Durable.MySql.MySqlDialect.ColumnSchemaQuery(System.String)">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.ExpressionStructuralEqualityComparer.Equals(System.Linq.Expressions.Expression,System.Linq.Expressions.Expression)">
-            <summary>
-            Determines whether two Expression objects are structurally equal.
-            </summary>
-            <param name="x">The first Expression to compare.</param>
-            <param name="y">The second Expression to compare.</param>
-            <returns>True if the expressions have the same structure; otherwise, false.</returns>
+        <member name="M:Durable.MySql.MySqlDialect.IndexSchemaQuery(System.String)">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.ExpressionStructuralEqualityComparer.GetHashCode(System.Linq.Expressions.Expression)">
-            <summary>
-            Returns a hash code for the specified Expression based on its structure.
-            Structurally equivalent expressions will produce the same hash code.
-            </summary>
-            <param name="obj">The Expression for which to get a hash code.</param>
-            <returns>A hash code for the Expression's structure.</returns>
+        <member name="M:Durable.MySql.MySqlDialect.NormalizeColumnType(System.String)">
+            <inheritdoc />
         </member>
-        <member name="T:Durable.MySql.MySqlFullTextSearchExtensions">
-            <summary>
-            Extension methods for MySQL full-text search capabilities.
-            Provides methods to add MATCH() AGAINST() clauses to queries.
-            </summary>
+        <member name="M:Durable.MySql.MySqlDialect.CreateMigrationHistoryTableSql(System.String)">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlFullTextSearchExtensions.WhereFullTextMatch``2(Durable.IQueryBuilder{``0},System.Linq.Expressions.Expression{System.Func{``0,``1}},System.String,Durable.MySql.FullTextSearchMode)">
-            <summary>
-            Adds a full-text search condition using MATCH() AGAINST() syntax for a single column.
-            </summary>
-            <typeparam name="T">The entity type</typeparam>
-            <typeparam name="TProperty">The property type being searched</typeparam>
-            <param name="queryBuilder">The query builder instance</param>
-            <param name="propertySelector">Expression selecting the property to search</param>
-            <param name="searchTerms">The search terms to match against</param>
-            <param name="searchMode">The full-text search mode to use. Default is Natural.</param>
-            <returns>The query builder for method chaining</returns>
-            <exception cref="T:System.ArgumentNullException">Thrown when queryBuilder, propertySelector, or searchTerms is null</exception>
-            <exception cref="T:System.ArgumentException">Thrown when searchTerms is empty or whitespace</exception>
+        <member name="M:Durable.MySql.MySqlDialect.AcquireMigrationLockSql(System.String,System.Int32)">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlFullTextSearchExtensions.WhereFullTextMatch``1(Durable.IQueryBuilder{``0},System.Linq.Expressions.Expression{System.Func{``0,System.Object}}[],System.String,Durable.MySql.FullTextSearchMode)">
-            <summary>
-            Adds a full-text search condition using MATCH() AGAINST() syntax for multiple columns.
-            All specified columns must be part of the same FULLTEXT index.
-            </summary>
-            <typeparam name="T">The entity type</typeparam>
-            <param name="queryBuilder">The query builder instance</param>
-            <param name="propertySelectors">Array of expressions selecting the properties to search</param>
-            <param name="searchTerms">The search terms to match against</param>
-            <param name="searchMode">The full-text search mode to use. Default is Natural.</param>
-            <returns>The query builder for method chaining</returns>
-            <exception cref="T:System.ArgumentNullException">Thrown when queryBuilder, propertySelectors, or searchTerms is null</exception>
-            <exception cref="T:System.ArgumentException">Thrown when propertySelectors is empty or searchTerms is empty/whitespace</exception>
+        <member name="M:Durable.MySql.MySqlDialect.ReleaseMigrationLockSql(System.String)">
+            <inheritdoc />
         </member>
-        <member name="T:Durable.MySql.MySqlGroupedQueryBuilder`2">
-            <summary>
-            Advanced grouped query builder for MySQL with EntityMapper integration.
-            Provides comprehensive support for complex type conversions, navigation properties,
-            and sophisticated aggregate operations with proper entity mapping.
-            </summary>
-            <typeparam name="TEntity">The entity type being queried</typeparam>
-            <typeparam name="TKey">The type of the grouping key</typeparam>
+        <member name="P:Durable.MySql.MySqlDialect.IdentifierOpen">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlGroupedQueryBuilder`2.#ctor(Durable.MySql.MySqlRepository{`0},Durable.MySql.MySqlQueryBuilder{`0},System.Linq.Expressions.Expression{System.Func{`0,`1}},Durable.MySql.MySqlEntityMapper{`0},Durable.IDataTypeConverter,Durable.ISanitizer)">
-            <summary>
-            Initializes a new instance of the MySqlGroupedQueryBuilder class.
-            </summary>
-            <param name="repository">The MySQL repository instance</param>
-            <param name="queryBuilder">The MySQL query builder instance</param>
-            <param name="keySelector">Expression for selecting the grouping key</param>
-            <param name="entityMapper">Advanced entity mapper for complex type handling</param>
-            <param name="dataTypeConverter">Data type converter for advanced conversions</param>
-            <param name="sanitizer">SQL sanitizer for safe query construction</param>
-            <exception cref="T:System.ArgumentNullException">Thrown when any required parameter is null</exception>
+        <member name="P:Durable.MySql.MySqlDialect.IdentifierClose">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlGroupedQueryBuilder`2.Having(System.Linq.Expressions.Expression{System.Func{System.Linq.IGrouping{`1,`0},System.Boolean}})">
-            <summary>
-            Adds a HAVING clause to filter grouped results using advanced expression parsing.
-            </summary>
-            <param name="predicate">The condition to apply to the grouped results</param>
-            <returns>The current grouped query builder for method chaining</returns>
-            <exception cref="T:System.ArgumentNullException">Thrown when predicate is null</exception>
-            <exception cref="T:System.NotSupportedException">Thrown when the expression contains unsupported operations</exception>
+        <member name="P:Durable.MySql.MySqlDialect.UnboundedLimit">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlGroupedQueryBuilder`2.Select``1(System.Linq.Expressions.Expression{System.Func{System.Linq.IGrouping{`1,`0},``0}})">
-            <summary>
-            Specifies a custom selection for the grouped query results with enhanced type handling.
-            </summary>
-            <typeparam name="TResult">The type of the result after selection</typeparam>
-            <param name="selector">The selection expression to apply to each group</param>
-            <returns>The current grouped query builder for method chaining</returns>
-            <exception cref="T:System.ArgumentNullException">Thrown when selector is null</exception>
+        <member name="M:Durable.MySql.MySqlDialect.AutoIncrementColumnType(Durable.ColumnMetadata,System.Boolean)">
+            <inheritdoc />
         </member>
-        <member name="M:Durable.MySql.MySqlGroupedQueryBuilder`2.Execute">
+        <member name="M:Durable.MySql.MySqlDialect.StringLiteral(System.String)">
             <summary>
-            Executes the grouped query and returns results with full entity mapping support.
+            Renders a string literal, escaping backslashes (MySQL treats them as escape characters by default) and quotes.
             </summary>
             <returns>The grouped query results with properly mapped entities</returns>
             <exception cref="T:System.InvalidOperationException">Thrown when query execution fails</exception>
@@ -1041,16 +629,6 @@
             Gets or sets the SQL alias for the junction table in many-to-many scenarios.
             </summary>
         </member>
-        <member name="P:Durable.MySql.MySqlIncludeInfo.JunctionParentKeyColumn">
-            <summary>
-            Gets or sets the junction table column referencing the parent entity in many-to-many scenarios.
-            </summary>
-        </member>
-        <member name="P:Durable.MySql.MySqlIncludeInfo.JunctionTargetKeyColumn">
-            <summary>
-            Gets or sets the junction table column referencing the related entity in many-to-many scenarios.
-            </summary>
-        </member>
         <member name="M:Durable.MySql.MySqlIncludeInfo.#ctor">
             <summary>
             Initializes a new instance of the MySqlIncludeInfo class.
@@ -1068,12 +646,11 @@
             Handles validation, caching, and relationship discovery for complex entity graphs.
             </summary>
         </member>
-        <member name="M:Durable.MySql.MySqlIncludeProcessor.#ctor(Durable.ISanitizer,Durable.Metadata.IEntityMetadataProvider,System.Int32)">
+        <member name="M:Durable.MySql.MySqlIncludeProcessor.#ctor(Durable.ISanitizer,System.Int32)">
             <summary>
             Initializes a new instance of the MySqlIncludeProcessor class.
             </summary>
             <param name="sanitizer">The sanitizer to use for SQL identifiers</param>
-            <param name="metadataProvider">The entity metadata provider.</param>
             <param name="maxIncludeDepth">Maximum depth for nested includes to prevent infinite recursion. Default is 5</param>
             <exception cref="T:System.ArgumentNullException">Thrown when sanitizer is null</exception>
         </member>
@@ -1103,11 +680,6 @@
             <returns>The database table name</returns>
             <exception cref="T:System.ArgumentNullException">Thrown when entityType is null</exception>
             <exception cref="T:System.InvalidOperationException">Thrown when the entity type doesn't have an EntityAttribute</exception>
-        </member>
-        <member name="M:Durable.MySql.MySqlIncludeProcessor.GetJunctionColumnName(System.Type,System.String)">
-            <summary>
-            Resolves a junction entity property name to its mapped column name.
-            </summary>
         </member>
         <member name="T:Durable.MySql.MySqlIncludeValidator">
             <summary>
@@ -1205,12 +777,11 @@
             Gets or sets the table alias that owns this column.
             </summary>
         </member>
-        <member name="M:Durable.MySql.MySqlJoinBuilder.#ctor(Durable.ISanitizer,Durable.Metadata.IEntityMetadataProvider)">
+        <member name="M:Durable.MySql.MySqlJoinBuilder.#ctor(Durable.ISanitizer)">
             <summary>
             Initializes a new instance of the MySqlJoinBuilder class.
             </summary>
             <param name="sanitizer">The sanitizer to use for SQL identifiers and values</param>
-            <param name="metadataProvider">The entity metadata provider.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when sanitizer is null</exception>
         </member>
         <member name="M:Durable.MySql.MySqlJoinBuilder.BuildJoinSql``1(System.String,System.Collections.Generic.List{System.String})">
@@ -2384,16 +1955,17 @@
         </member>
         <member name="T:Durable.MySql.MySqlRepository`1">
             <summary>
-            MySQL Repository Implementation with Full Transaction Support and Connection Pooling.
-            Provides comprehensive data access operations for entities with support for optimistic concurrency,
-            batch operations, SQL capture, and advanced querying capabilities.
+            MySQL repository for <typeparamref name="T"/>. All behavior comes from <see cref="T:Durable.Sql.SqlRepository`1"/>; this class
+            supplies the MySQL dialect, a <see cref="T:MySqlConnector.MySqlDataSource"/>-based connection factory, bulk insert through
+            <see cref="T:MySqlConnector.MySqlBulkCopy"/> (when the connection string sets AllowLoadLocalInfile=true and the server allows it;
+            otherwise batched multi-row INSERT), and database creation.
+            Thread safety: safe for concurrent use.
             </summary>
-            <typeparam name="T">The entity type that this repository manages. Must be a class with a parameterless constructor.</typeparam>
+            <typeparam name="T">Entity type.</typeparam>
         </member>
-        <member name="P:Durable.MySql.MySqlRepository`1.LastExecutedSql">
+        <member name="M:Durable.MySql.MySqlRepository`1.#ctor(System.String,Durable.Sql.SqlRepositoryOptions)">
             <summary>
-            Gets the last SQL statement that was executed by this repository instance.
-            Returns null if no SQL has been executed or SQL capture is disabled.
+            Creates a repository from a connection string. The repository owns its connection factory and disposes it.
             </summary>
         </member>
         <member name="P:Durable.MySql.MySqlRepository`1.LastExecutedSqlWithParameters">
@@ -2448,7 +2020,7 @@
             Gets the repository settings used to configure the connection
             </summary>
         </member>
-        <member name="M:Durable.MySql.MySqlRepository`1.#ctor(System.String,Durable.IBatchInsertConfiguration,Durable.IDataTypeConverter,Durable.IConcurrencyConflictResolver{`0},Durable.Metadata.IEntityMetadataProvider)">
+        <member name="M:Durable.MySql.MySqlRepository`1.#ctor(System.String,Durable.IBatchInsertConfiguration,Durable.IDataTypeConverter,Durable.IConcurrencyConflictResolver{`0})">
             <summary>
             Initializes a new instance of the MySqlRepository with a connection string and optional configuration.
             Creates an internal MySqlConnectionFactory for connection management.
@@ -2457,65 +2029,54 @@
             <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
             <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
             <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
-            <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="P:Durable.DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when connectionString is null.</exception>
-            <exception cref="T:System.InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
+            <exception cref="T:System.InvalidOperationException">Thrown when <typeparamref name="T"/> has no primary key.</exception>
         </member>
-        <member name="M:Durable.MySql.MySqlRepository`1.#ctor(Durable.MySql.MySqlRepositorySettings,Durable.IBatchInsertConfiguration,Durable.IDataTypeConverter,Durable.IConcurrencyConflictResolver{`0},Durable.Metadata.IEntityMetadataProvider)">
+        <member name="M:Durable.MySql.MySqlRepository`1.#ctor(Durable.MySql.MySqlRepositorySettings,Durable.IBatchInsertConfiguration,Durable.IDataTypeConverter,Durable.IConcurrencyConflictResolver{`0})">
             <summary>
-            Initializes a new instance of the MySqlRepository with repository settings and optional configuration.
-            Creates an internal MySqlConnectionFactory using the connection string built from settings.
+            Creates a repository from settings. The repository owns its connection factory and disposes it.
             </summary>
             <param name="settings">The MySQL repository settings to use for configuration.</param>
             <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
             <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
             <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
-            <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="P:Durable.DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when settings is null.</exception>
-            <exception cref="T:System.InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key), or when settings are invalid.</exception>
         </member>
-        <member name="M:Durable.MySql.MySqlRepository`1.#ctor(Durable.IConnectionFactory,Durable.IBatchInsertConfiguration,Durable.IDataTypeConverter,Durable.IConcurrencyConflictResolver{`0},Durable.Metadata.IEntityMetadataProvider)">
+        <member name="M:Durable.MySql.MySqlRepository`1.#ctor(Durable.IConnectionFactory,Durable.IBatchInsertConfiguration,Durable.IDataTypeConverter,Durable.IConcurrencyConflictResolver{`0})">
             <summary>
-            Initializes a new instance of the MySqlRepository with a provided connection factory and optional configuration.
-            Allows for shared connection pooling and factory management across multiple repository instances.
-            Note: When using this constructor, the Settings property will be null as no connection string is directly provided.
+            Creates a repository on a shared connection factory. The factory is not disposed with the repository.
             </summary>
             <param name="connectionFactory">The connection factory to use for database connections.</param>
             <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
             <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
             <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
-            <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="P:Durable.DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when connectionFactory is null.</exception>
-            <exception cref="T:System.InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
         </member>
-        <member name="M:Durable.MySql.MySqlRepository`1.ReadFirst(System.Linq.Expressions.Expression{System.Func{`0,System.Boolean}},Durable.ITransaction)">
+        <member name="M:Durable.MySql.MySqlRepository`1.CreateDatabaseIfNotExists">
             <summary>
-            Reads the first entity that matches the specified predicate, or the first entity if no predicate is provided.
+            Creates the database named in the settings when it does not exist.
             </summary>
-            <param name="predicate">Optional filter expression to apply. If null, returns the first entity found.</param>
-            <param name="transaction">Optional transaction to execute the operation within.</param>
-            <returns>The first matching entity, or null if no entities match the criteria.</returns>
+            <exception cref="T:System.InvalidOperationException">Thrown when no database name is configured.</exception>
         </member>
-        <member name="M:Durable.MySql.MySqlRepository`1.ReadFirstOrDefault(System.Linq.Expressions.Expression{System.Func{`0,System.Boolean}},Durable.ITransaction)">
+        <member name="M:Durable.MySql.MySqlRepository`1.CreateDatabaseIfNotExistsAsync(System.Threading.CancellationToken)">
             <summary>
-            Reads the first entity that matches the specified predicate, or returns default if no match is found.
+            Creates the database named in the settings when it does not exist.
             </summary>
-            <param name="predicate">Optional predicate to filter entities. If null, returns the first entity.</param>
-            <param name="transaction">Optional transaction to execute within.</param>
-            <returns>The first entity that matches the predicate, or default(T) if no match is found.</returns>
+            <param name="token">Cancellation token.</param>
+            <returns>A task.</returns>
+            <exception cref="T:System.InvalidOperationException">Thrown when no database name is configured.</exception>
         </member>
-        <member name="M:Durable.MySql.MySqlRepository`1.ReadSingle(System.Linq.Expressions.Expression{System.Func{`0,System.Boolean}},Durable.ITransaction)">
+        <member name="M:Durable.MySql.MySqlRepository`1.BulkInsertCore(Durable.Sql.ConnectionLease,System.Collections.Generic.IReadOnlyList{`0})">
             <summary>
-            Reads a single entity that matches the specified predicate. Throws an exception if zero or more than one entity is found.
+            Inserts rows with <see cref="T:MySqlConnector.MySqlBulkCopy"/> when local infile is allowed; otherwise uses batched multi-row INSERT.
             </summary>
-            <param name="predicate">The predicate to filter entities.</param>
-            <param name="transaction">Optional transaction to execute within.</param>
-            <returns>The single entity that matches the predicate.</returns>
-            <exception cref="T:System.InvalidOperationException">Thrown when zero or more than one entity matches the predicate.</exception>
+            <param name="lease">Lease inside a transaction.</param>
+            <param name="entities">Prepared entities.</param>
+            <returns>Rows inserted.</returns>
         </member>
-        <member name="M:Durable.MySql.MySqlRepository`1.ReadSingleOrDefault(System.Linq.Expressions.Expression{System.Func{`0,System.Boolean}},Durable.ITransaction)">
+        <member name="M:Durable.MySql.MySqlRepository`1.BulkInsertCoreAsync(Durable.Sql.ConnectionLease,System.Collections.Generic.IReadOnlyList{`0},System.Threading.CancellationToken)">
             <summary>
-            Reads a single entity that matches the specified predicate, or returns default if no match is found. Throws an exception if more than one entity is found.
+            Inserts rows with <see cref="T:MySqlConnector.MySqlBulkCopy"/> when local infile is allowed; otherwise uses batched multi-row INSERT.
             </summary>
             <param name="predicate">The predicate to filter entities.</param>
             <param name="transaction">Optional transaction to execute within.</param>
@@ -2593,15 +2154,6 @@
             </summary>
             <param name="token">A cancellation token to cancel the operation.</param>
             <returns>A task representing the asynchronous operation with a new transaction instance.</returns>
-        </member>
-        <member name="M:Durable.MySql.MySqlRepository`1.ConvertPrimaryKeyValue(System.Object)">
-            <summary>
-            Converts a primary key value to its database representation using the data type converter,
-            so that custom key types bind correctly as parameters. Values that are not of the key
-            property's type (e.g. already converted) are returned unchanged.
-            </summary>
-            <param name="id">The primary key value.</param>
-            <returns>The converted value, or null when id is null.</returns>
         </member>
         <member name="M:Durable.MySql.MySqlRepository`1.EnsureConnectionOpen(System.Data.Common.DbConnection)">
             <summary>
@@ -3714,13 +3266,12 @@
             Helper class for building MySQL schema (CREATE TABLE) SQL from entity metadata
             </summary>
         </member>
-        <member name="M:Durable.MySql.MySqlSchemaBuilder.#ctor(Durable.ISanitizer,Durable.IDataTypeConverter,Durable.Metadata.IEntityMetadataProvider)">
+        <member name="M:Durable.MySql.MySqlSchemaBuilder.#ctor(Durable.ISanitizer,Durable.IDataTypeConverter)">
             <summary>
             Initializes a new instance of the MySqlSchemaBuilder class
             </summary>
             <param name="sanitizer">The sanitizer for SQL identifiers</param>
             <param name="dataTypeConverter">The data type converter for SQL type mapping</param>
-            <param name="metadataProvider">The entity metadata provider.</param>
         </member>
         <member name="M:Durable.MySql.MySqlSchemaBuilder.BuildCreateTableSql(System.Type)">
             <summary>
@@ -3903,32 +3454,6 @@
             <returns>A MySQL connection factory with default configuration</returns>
             <exception cref="T:System.ArgumentNullException">Thrown when connectionString is null</exception>
             <exception cref="T:System.ArgumentException">Thrown when connectionString is empty or whitespace</exception>
-        </member>
-        <member name="T:Durable.MySql.MySqlTransactionExtensions">
-            <summary>
-            Begins MySQL transactions directly from a connection factory. Because every repository
-            accepts an <see cref="T:Durable.ITransaction"/>, a transaction started here can be shared by
-            repositories of different entity types that use the same factory (a unit of work).
-            </summary>
-        </member>
-        <member name="M:Durable.MySql.MySqlTransactionExtensions.BeginTransaction(Durable.IConnectionFactory)">
-            <summary>
-            Begins a new database transaction on a connection from the factory.
-            The transaction owns the connection and returns it to the factory when disposed.
-            </summary>
-            <param name="connectionFactory">The MySQL connection factory.</param>
-            <returns>A new transaction instance.</returns>
-            <exception cref="T:System.ArgumentNullException">Thrown when connectionFactory is null.</exception>
-        </member>
-        <member name="M:Durable.MySql.MySqlTransactionExtensions.BeginTransactionAsync(Durable.IConnectionFactory,System.Threading.CancellationToken)">
-            <summary>
-            Asynchronously begins a new database transaction on a connection from the factory.
-            The transaction owns the connection and returns it to the factory when disposed.
-            </summary>
-            <param name="connectionFactory">The MySQL connection factory.</param>
-            <param name="token">A cancellation token to cancel the operation.</param>
-            <returns>A task representing the asynchronous operation with a new transaction instance.</returns>
-            <exception cref="T:System.ArgumentNullException">Thrown when connectionFactory is null.</exception>
         </member>
         <member name="T:Durable.MySql.MySqlWindowedQueryBuilder`1">
             <summary>

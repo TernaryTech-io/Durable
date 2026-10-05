@@ -5,6 +5,7 @@ namespace Test.Shared
     using System.Linq;
     using System.Threading.Tasks;
     using Durable;
+    using Durable.Sql;
     using Xunit;
 
     /// <summary>
@@ -39,8 +40,8 @@ namespace Test.Shared
         [Fact]
         public async Task CanIncludeOneToManyRelationships()
         {
-            IRepository<Author> authorRepo = _Provider.CreateRepository<Author>();
-            IRepository<Book> bookRepo = _Provider.CreateRepository<Book>();
+            ISqlRepository<Author> authorRepo = _Provider.CreateRepository<Author>();
+            ISqlRepository<Book> bookRepo = _Provider.CreateRepository<Book>();
 
             await authorRepo.ExecuteSqlAsync("DELETE FROM author_categories");
             await authorRepo.ExecuteSqlAsync("DELETE FROM books");
@@ -84,8 +85,8 @@ namespace Test.Shared
         [Fact]
         public async Task CanIncludeManyToOneRelationships()
         {
-            IRepository<Author> authorRepo = _Provider.CreateRepository<Author>();
-            IRepository<Book> bookRepo = _Provider.CreateRepository<Book>();
+            ISqlRepository<Author> authorRepo = _Provider.CreateRepository<Author>();
+            ISqlRepository<Book> bookRepo = _Provider.CreateRepository<Book>();
 
             await authorRepo.ExecuteSqlAsync("DELETE FROM author_categories");
             await authorRepo.ExecuteSqlAsync("DELETE FROM books");
@@ -112,10 +113,11 @@ namespace Test.Shared
                 .ToArray();
 
             Assert.Single(booksWithAuthor);
-            Assert.NotNull(booksWithAuthor[0].Author);
-            Assert.True(ValidationHelpers.AreStringsEqual("George Orwell", booksWithAuthor[0].Author.Name));
+            Author? loadedAuthor = booksWithAuthor[0].Author;
+            Assert.NotNull(loadedAuthor);
+            Assert.True(ValidationHelpers.AreStringsEqual("George Orwell", loadedAuthor.Name));
 
-            Console.WriteLine($"     Loaded book with author: {booksWithAuthor[0].Author.Name}");
+            Console.WriteLine($"     Loaded book with author: {loadedAuthor.Name}");
         }
 
         /// <summary>

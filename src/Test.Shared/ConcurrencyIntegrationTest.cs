@@ -3,6 +3,7 @@
     using System;
     using System.IO;
     using Durable;
+    using Durable.Sql;
     using Durable.Sqlite;
     using Durable.ConcurrencyConflictResolvers;
     using Xunit;
@@ -90,8 +91,10 @@
                 
                 Author created = repo.Create(author);
                 
-                Author copy1 = repo.ReadById(created.Id);
-                Author copy2 = repo.ReadById(created.Id);
+                Author? copy1 = repo.ReadById(created.Id);
+                Author? copy2 = repo.ReadById(created.Id);
+                Assert.NotNull(copy1);
+                Assert.NotNull(copy2);
                 
                 copy1.Name = "Update 1";
                 repo.Update(copy1);
@@ -129,7 +132,7 @@
                 if (File.Exists(dbFile)) File.Delete(dbFile);
                 
                 IConcurrencyConflictResolver<Author> resolver = new ClientWinsResolver<Author>();
-                using (SqliteRepository<Author> repo = new SqliteRepository<Author>(connectionString, null, null, resolver))
+                using (SqliteRepository<Author> repo = new SqliteRepository<Author>(connectionString) { ConflictResolver = resolver })
                 {
                     CreateTestTable(connectionString);
                 
@@ -141,8 +144,10 @@
                     
                     Author created = repo.Create(author);
                     
-                    Author copy1 = repo.ReadById(created.Id);
-                    Author copy2 = repo.ReadById(created.Id);
+                    Author? copy1 = repo.ReadById(created.Id);
+                    Author? copy2 = repo.ReadById(created.Id);
+                    Assert.NotNull(copy1);
+                    Assert.NotNull(copy2);
                     
                     copy1.Name = "Update 1";
                     Author updated1 = repo.Update(copy1);
@@ -177,7 +182,7 @@
                 if (File.Exists(dbFile)) File.Delete(dbFile);
                 
                 IConcurrencyConflictResolver<Author> resolver = new DatabaseWinsResolver<Author>();
-                using (SqliteRepository<Author> repo = new SqliteRepository<Author>(connectionString, null, null, resolver))
+                using (SqliteRepository<Author> repo = new SqliteRepository<Author>(connectionString) { ConflictResolver = resolver })
                 {
                     CreateTestTable(connectionString);
                 
@@ -189,8 +194,10 @@
                     
                     Author created = repo.Create(author);
                     
-                    Author copy1 = repo.ReadById(created.Id);
-                    Author copy2 = repo.ReadById(created.Id);
+                    Author? copy1 = repo.ReadById(created.Id);
+                    Author? copy2 = repo.ReadById(created.Id);
+                    Assert.NotNull(copy1);
+                    Assert.NotNull(copy2);
                     
                     copy1.Name = "Update 1";
                     Author updated1 = repo.Update(copy1);
@@ -227,7 +234,7 @@
                 if (File.Exists(dbFile)) File.Delete(dbFile);
                 
                 IConcurrencyConflictResolver<Author> resolver = new MergeChangesResolver<Author>("Id", "Version");
-                using (SqliteRepository<Author> repo = new SqliteRepository<Author>(connectionString, null, null, resolver))
+                using (SqliteRepository<Author> repo = new SqliteRepository<Author>(connectionString) { ConflictResolver = resolver })
                 {
                     CreateTestTable(connectionString);
                 
@@ -239,8 +246,10 @@
                     
                     Author created = repo.Create(author);
                     
-                    Author copy1 = repo.ReadById(created.Id);
-                    Author copy2 = repo.ReadById(created.Id);
+                    Author? copy1 = repo.ReadById(created.Id);
+                    Author? copy2 = repo.ReadById(created.Id);
+                    Assert.NotNull(copy1);
+                    Assert.NotNull(copy2);
                     
                     // First update changes the name
                     copy1.Name = "Updated Name";
@@ -292,8 +301,10 @@
 
                 Company created = repo.Create(company);
 
-                Company copy1 = repo.ReadById(created.Id);
-                Company copy2 = repo.ReadById(created.Id);
+                Company? copy1 = repo.ReadById(created.Id);
+                Company? copy2 = repo.ReadById(created.Id);
+                Assert.NotNull(copy1);
+                Assert.NotNull(copy2);
 
                 copy1.Name = "Update 1";
                 repo.Update(copy1);

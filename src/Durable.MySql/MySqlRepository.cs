@@ -3,26 +3,21 @@ namespace Durable.MySql
     using System;
     using System.Collections.Generic;
     using System.Data;
-    using System.Data.Common;
-    using System.Linq;
-    using System.Linq.Expressions;
-    using System.Reflection;
-    using System.Runtime.CompilerServices;
-    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
     using MySqlConnector;
     using Durable.ConcurrencyConflictResolvers;
     using Durable.DefaultValueProviders;
-    using Durable.Metadata;
 
     /// <summary>
-    /// MySQL Repository Implementation with Full Transaction Support and Connection Pooling.
-    /// Provides comprehensive data access operations for entities with support for optimistic concurrency,
-    /// batch operations, SQL capture, and advanced querying capabilities.
+    /// MySQL repository for <typeparamref name="T"/>. All behavior comes from <see cref="SqlRepository{T}"/>; this class
+    /// supplies the MySQL dialect, a <see cref="MySqlDataSource"/>-based connection factory, bulk insert through
+    /// <see cref="MySqlBulkCopy"/> (when the connection string sets AllowLoadLocalInfile=true and the server allows it;
+    /// otherwise batched multi-row INSERT), and database creation.
+    /// Thread safety: safe for concurrent use.
     /// </summary>
-    /// <typeparam name="T">The entity type that this repository manages. Must be a class with a parameterless constructor.</typeparam>
-    public class MySqlRepository<T> : IRepository<T>, IBatchInsertConfiguration, ISqlCapture, ISqlTrackingConfiguration, IDisposable where T : class, new()
+    /// <typeparam name="T">Entity type.</typeparam>
+    public class MySqlRepository<T> : SqlRepository<T> where T : class, new()
     {
         #region Public-Members
 
@@ -112,7 +107,6 @@ namespace Durable.MySql
         internal readonly IBatchInsertConfiguration _BatchConfig;
         internal readonly ISanitizer _Sanitizer;
         internal readonly IDataTypeConverter _DataTypeConverter;
-        internal readonly IEntityMetadataProvider _MetadataProvider;
         internal readonly VersionColumnInfo? _VersionColumnInfo;
         internal readonly IConcurrencyConflictResolver<T> _ConflictResolver;
         internal readonly IChangeTracker<T> _ChangeTracker;
@@ -129,25 +123,22 @@ namespace Durable.MySql
         #region Constructors-and-Factories
 
         /// <summary>
-        /// Initializes a new instance of the MySqlRepository with a connection string and optional configuration.
-        /// Creates an internal MySqlConnectionFactory for connection management.
+        /// Creates a repository from a connection string. The repository owns its connection factory and disposes it.
         /// </summary>
         /// <param name="connectionString">The MySQL connection string used to connect to the database.</param>
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
-        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when connectionString is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
-        public MySqlRepository(string connectionString, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
+        public MySqlRepository(string connectionString, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null)
         {
             ArgumentNullException.ThrowIfNull(connectionString);
             Settings = MySqlRepositorySettings.Parse(connectionString);
             _ConnectionFactory = new MySqlConnectionFactory(connectionString);
             _OwnsConnectionFactory = true; // We created this factory, so we own it
             _Sanitizer = new MySqlSanitizer();
-            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
-            _DataTypeConverter = dataTypeConverter ?? new MySqlDataTypeConverter(_MetadataProvider);
+            _DataTypeConverter = dataTypeConverter ?? new MySqlDataTypeConverter();
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -163,17 +154,15 @@ namespace Durable.MySql
         }
 
         /// <summary>
-        /// Initializes a new instance of the MySqlRepository with repository settings and optional configuration.
-        /// Creates an internal MySqlConnectionFactory using the connection string built from settings.
+        /// Creates a repository from settings. The repository owns its connection factory and disposes it.
         /// </summary>
         /// <param name="settings">The MySQL repository settings to use for configuration.</param>
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
-        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when settings is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key), or when settings are invalid.</exception>
-        public MySqlRepository(MySqlRepositorySettings settings, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
+        public MySqlRepository(MySqlRepositorySettings settings, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null)
         {
             ArgumentNullException.ThrowIfNull(settings);
             Settings = settings;
@@ -181,8 +170,7 @@ namespace Durable.MySql
             _ConnectionFactory = new MySqlConnectionFactory(connectionString);
             _OwnsConnectionFactory = true; // We created this factory, so we own it
             _Sanitizer = new MySqlSanitizer();
-            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
-            _DataTypeConverter = dataTypeConverter ?? new MySqlDataTypeConverter(_MetadataProvider);
+            _DataTypeConverter = dataTypeConverter ?? new MySqlDataTypeConverter();
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -198,25 +186,21 @@ namespace Durable.MySql
         }
 
         /// <summary>
-        /// Initializes a new instance of the MySqlRepository with a provided connection factory and optional configuration.
-        /// Allows for shared connection pooling and factory management across multiple repository instances.
-        /// Note: When using this constructor, the Settings property will be null as no connection string is directly provided.
+        /// Creates a repository on a shared connection factory. The factory is not disposed with the repository.
         /// </summary>
         /// <param name="connectionFactory">The connection factory to use for database connections.</param>
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
-        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when connectionFactory is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
-        public MySqlRepository(IConnectionFactory connectionFactory, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
+        public MySqlRepository(IConnectionFactory connectionFactory, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null)
         {
             _ConnectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
             _OwnsConnectionFactory = false; // External factory, we don't own it
             Settings = null!;
             _Sanitizer = new MySqlSanitizer();
-            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
-            _DataTypeConverter = dataTypeConverter ?? new MySqlDataTypeConverter(_MetadataProvider);
+            _DataTypeConverter = dataTypeConverter ?? new MySqlDataTypeConverter();
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -385,18 +369,49 @@ namespace Durable.MySql
         /// <returns>A new transaction instance.</returns>
         public ITransaction BeginTransaction()
         {
-            return _ConnectionFactory.BeginTransaction();
+            MySqlConnection? connection = null;
+            try
+            {
+                connection = (MySqlConnection)PooledConnectionHandle.Unwrap(_ConnectionFactory.GetConnection());
+                EnsureConnectionOpen(connection);
+                MySqlTransaction transaction = connection.BeginTransaction();
+                MySqlRepositoryTransaction result = new MySqlRepositoryTransaction(connection, transaction, _ConnectionFactory);
+                connection = null; // Transaction now owns the connection
+                return result;
+            }
+            finally
+            {
+                if (connection != null)
+                {
+                    _ConnectionFactory.ReturnConnection(connection);
+                }
+            }
         }
-
 
         /// <summary>
         /// Asynchronously begins a new database transaction.
         /// </summary>
         /// <param name="token">A cancellation token to cancel the operation.</param>
         /// <returns>A task representing the asynchronous operation with a new transaction instance.</returns>
-        public Task<ITransaction> BeginTransactionAsync(CancellationToken token = default)
+        public async Task<ITransaction> BeginTransactionAsync(CancellationToken token = default)
         {
-            return _ConnectionFactory.BeginTransactionAsync(token);
+            MySqlConnection? connection = null;
+            try
+            {
+                connection = (MySqlConnection)PooledConnectionHandle.Unwrap(await _ConnectionFactory.GetConnectionAsync(token).ConfigureAwait(false));
+                await EnsureConnectionOpenAsync(connection, token).ConfigureAwait(false);
+                MySqlTransaction transaction = await connection.BeginTransactionAsync(token).ConfigureAwait(false);
+                MySqlRepositoryTransaction result = new MySqlRepositoryTransaction(connection, transaction, _ConnectionFactory);
+                connection = null; // Transaction now owns the connection
+                return result;
+            }
+            finally
+            {
+                if (connection != null)
+                {
+                    await _ConnectionFactory.ReturnConnectionAsync(connection).ConfigureAwait(false);
+                }
+            }
         }
 
         #endregion
@@ -404,159 +419,66 @@ namespace Durable.MySql
         #region Private-Methods
 
         /// <summary>
-        /// Converts a primary key value to its database representation using the data type converter,
-        /// so that custom key types bind correctly as parameters. Values that are not of the key
-        /// property's type (e.g. already converted) are returned unchanged.
+        /// Creates the database named in the settings when it does not exist.
         /// </summary>
-        /// <param name="id">The primary key value.</param>
-        /// <returns>The converted value, or null when id is null.</returns>
-        private object? ConvertPrimaryKeyValue(object? id)
+        /// <exception cref="InvalidOperationException">Thrown when no database name is configured.</exception>
+        public override void CreateDatabaseIfNotExists()
         {
-            Type keyType = Nullable.GetUnderlyingType(_PrimaryKeyProperty.PropertyType) ?? _PrimaryKeyProperty.PropertyType;
-            if (id == null || !keyType.IsInstanceOfType(id)) return id;
-            return _DataTypeConverter.ConvertToDatabase(id, _PrimaryKeyProperty.PropertyType, _PrimaryKeyProperty);
+            ThrowIfDisposed();
+            MySqlConnectionStringBuilder builder = ServerConnection(out string database);
+            using MySqlConnection connection = new MySqlConnection(builder.ToString());
+            connection.Open();
+            using MySqlCommand command = new MySqlCommand("CREATE DATABASE IF NOT EXISTS " + Dialect.QuoteIdentifier(database), connection);
+            command.ExecuteNonQuery();
         }
 
         /// <summary>
-        /// Ensures the connection is open in a thread-safe manner.
-        /// Handles race conditions where connection state might change between check and open operations.
+        /// Creates the database named in the settings when it does not exist.
         /// </summary>
-        /// <param name="connection">The database connection to ensure is open</param>
-        private static void EnsureConnectionOpen(System.Data.Common.DbConnection connection)
+        /// <param name="token">Cancellation token.</param>
+        /// <returns>A task.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when no database name is configured.</exception>
+        public override async Task CreateDatabaseIfNotExistsAsync(CancellationToken token = default)
         {
-            if (connection.State == ConnectionState.Open)
-                return;
-
-            try
-            {
-                connection.Open();
-            }
-            catch (InvalidOperationException)
-            {
-                // Connection might already be open due to race condition, verify state
-                if (connection.State != ConnectionState.Open)
-                    throw;
-            }
-        }
-
-        /// <summary>
-        /// Asynchronously ensures the connection is open in a thread-safe manner.
-        /// Handles race conditions where connection state might change between check and open operations.
-        /// </summary>
-        /// <param name="connection">The database connection to ensure is open</param>
-        /// <param name="token">Cancellation token for the async operation</param>
-        private static async Task EnsureConnectionOpenAsync(System.Data.Common.DbConnection connection, CancellationToken token = default)
-        {
-            if (connection.State == ConnectionState.Open)
-                return;
-
-            try
+            ThrowIfDisposed();
+            MySqlConnectionStringBuilder builder = ServerConnection(out string database);
+            MySqlConnection connection = new MySqlConnection(builder.ToString());
+            await using (connection.ConfigureAwait(false))
             {
                 await connection.OpenAsync(token).ConfigureAwait(false);
-            }
-            catch (InvalidOperationException)
-            {
-                // Connection might already be open due to race condition, verify state
-                if (connection.State != ConnectionState.Open)
-                    throw;
+                MySqlCommand command = new MySqlCommand("CREATE DATABASE IF NOT EXISTS " + Dialect.QuoteIdentifier(database), connection);
+                await using (command.ConfigureAwait(false))
+                {
+                    await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                }
             }
         }
 
+        #endregion
+
+        #region Private-Methods
+
         /// <summary>
-        /// Creates an approximation of the original entity state for MergeChangesResolver.
-        /// This is needed because the repository doesn't track original entity state.
+        /// Inserts rows with <see cref="MySqlBulkCopy"/> when local infile is allowed; otherwise uses batched multi-row INSERT.
         /// </summary>
-        /// <param name="currentEntity">The current entity state from the database</param>
-        /// <param name="incomingEntity">The incoming entity from the client</param>
-        /// <returns>An approximated original entity for merge operations</returns>
-        private T CreateOriginalEntityApproximation(T currentEntity, T incomingEntity)
+        /// <param name="lease">Lease inside a transaction.</param>
+        /// <param name="entities">Prepared entities.</param>
+        /// <returns>Rows inserted.</returns>
+        protected override long BulkInsertCore(ConnectionLease lease, IReadOnlyList<T> entities)
         {
-            try
-            {
-                // Create a new instance for the original entity approximation
-                T originalEntity = (T)Activator.CreateInstance(typeof(T))!;
-                PropertyInfo[] properties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
-
-                foreach (PropertyInfo property in properties)
-                {
-                    if (property.CanRead && property.CanWrite)
-                    {
-                        // For version column, use the incoming entity's version (what client originally had)
-                        if (property.Name == "Version" ||
-                            (_VersionColumnInfo != null && property.Name == _VersionColumnInfo.Property.Name))
-                        {
-                            property.SetValue(originalEntity, property.GetValue(incomingEntity));
-                        }
-                        else
-                        {
-                            // For merge scenarios, we create a hybrid approach:
-                            // - If current and incoming values are different, use current (assuming server won)
-                            // - If they're the same, use that value
-                            object? currentValue = property.GetValue(currentEntity);
-                            object? incomingValue = property.GetValue(incomingEntity);
-
-                            // Use current entity's value as baseline - this assumes current represents
-                            // a more recent state that we want to preserve during merge operations
-                            property.SetValue(originalEntity, currentValue);
-                        }
-                    }
-                }
-
-                return originalEntity;
-            }
-            catch (Exception)
-            {
-                // If we can't create the approximation, fall back to using the incoming entity
-                return incomingEntity;
-            }
+            if (!AllowsLocalInfile(lease)) return base.BulkInsertCore(lease, entities);
+            MySqlBulkCopy bulkCopy = CreateBulkCopy(lease);
+            MySqlBulkCopyResult result = bulkCopy.WriteToServer(ToDataTable(entities));
+            return result.RowsInserted;
         }
 
         /// <summary>
-        /// Safely converts a database result to the specified type using the data type converter.
-        /// Handles type conversion failures gracefully with detailed error messages.
-        /// </summary>
-        /// <typeparam name="TResult">The target type to convert to</typeparam>
-        /// <param name="result">The database result to convert</param>
-        /// <returns>The converted result</returns>
-        /// <exception cref="InvalidCastException">Thrown when the conversion fails with detailed type information</exception>
-        private TResult SafeConvertDatabaseResult<TResult>(object? result)
-        {
-            if (result == DBNull.Value || result == null)
-                return default(TResult)!;
-
-            try
-            {
-                object? converted = _DataTypeConverter.ConvertFromDatabase(result, typeof(TResult));
-
-                if (converted == null && !typeof(TResult).IsClass && Nullable.GetUnderlyingType(typeof(TResult)) == null)
-                {
-                    throw new InvalidCastException($"Cannot convert null to non-nullable value type '{typeof(TResult).Name}'");
-                }
-
-                if (converted != null && !typeof(TResult).IsAssignableFrom(converted.GetType()))
-                {
-                    throw new InvalidCastException($"Cannot cast '{converted.GetType().Name}' to '{typeof(TResult).Name}'. DataTypeConverter returned incompatible type.");
-                }
-
-                return (TResult)converted!;
-            }
-            catch (InvalidCastException)
-            {
-                throw; // Re-throw our own InvalidCastExceptions
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidCastException($"Failed to convert database result of type '{result?.GetType().Name ?? "null"}' to '{typeof(TResult).Name}'. Original error: {ex.Message}", ex);
-            }
-        }
-
-        /// <summary>
-        /// Gets the entity name (table name) for this repository.
+        /// Inserts rows with <see cref="MySqlBulkCopy"/> when local infile is allowed; otherwise uses batched multi-row INSERT.
         /// </summary>
         /// <returns>The table name</returns>
         public string GetEntityName()
         {
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(typeof(T));
+            EntityAttribute? entityAttr = typeof(T).GetCustomAttribute<EntityAttribute>();
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type {typeof(T).Name} must be decorated with [Entity] attribute");
             return entityAttr.Name;
@@ -566,12 +488,12 @@ namespace Durable.MySql
         {
             PropertyInfo[] properties = typeof(T).GetProperties();
             PropertyInfo? pkProperty = properties.FirstOrDefault(p =>
-                _MetadataProvider.GetColumn(p)?.PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
+                p.GetCustomAttribute<PropertyAttribute>()?.PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
 
             if (pkProperty == null)
                 throw new InvalidOperationException($"Type {typeof(T).Name} must have a property with [Property] attribute and PrimaryKey flag");
 
-            PropertyAttribute? attr = _MetadataProvider.GetColumn(pkProperty);
+            PropertyAttribute? attr = pkProperty.GetCustomAttribute<PropertyAttribute>();
             return new PrimaryKeyInfo(attr!.Name, pkProperty);
         }
 
@@ -586,7 +508,7 @@ namespace Durable.MySql
 
             foreach (PropertyInfo property in properties)
             {
-                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
+                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
                 if (attr != null)
                 {
                     mappings[attr.Name] = property;
@@ -607,7 +529,7 @@ namespace Durable.MySql
 
             foreach (PropertyInfo property in properties)
             {
-                ForeignKeyAttribute? attr = _MetadataProvider.GetForeignKey(property);
+                ForeignKeyAttribute? attr = property.GetCustomAttribute<ForeignKeyAttribute>();
                 if (attr != null)
                 {
                     foreignKeys[property] = attr;
@@ -628,7 +550,7 @@ namespace Durable.MySql
 
             foreach (PropertyInfo property in properties)
             {
-                NavigationPropertyAttribute? attr = _MetadataProvider.GetNavigation(property);
+                NavigationPropertyAttribute? attr = property.GetCustomAttribute<NavigationPropertyAttribute>();
                 if (attr != null)
                 {
                     navigationProps[property] = attr;
@@ -647,10 +569,10 @@ namespace Durable.MySql
             PropertyInfo[] properties = typeof(T).GetProperties();
             foreach (PropertyInfo property in properties)
             {
-                VersionColumnAttribute? attr = _MetadataProvider.GetVersionColumn(property);
+                VersionColumnAttribute? attr = property.GetCustomAttribute<VersionColumnAttribute>();
                 if (attr != null)
                 {
-                    PropertyAttribute? propAttr = _MetadataProvider.GetColumn(property);
+                    PropertyAttribute? propAttr = property.GetCustomAttribute<PropertyAttribute>();
                     if (propAttr == null)
                         throw new InvalidOperationException($"Version column property {property.Name} must have [Property] attribute");
 
@@ -678,7 +600,7 @@ namespace Durable.MySql
 
             foreach (PropertyInfo property in properties)
             {
-                DefaultValueAttribute? attr = _MetadataProvider.GetDefaultValue(property);
+                DefaultValueAttribute? attr = property.GetCustomAttribute<DefaultValueAttribute>();
                 if (attr != null)
                 {
                     IDefaultValueProvider provider;
@@ -729,7 +651,7 @@ namespace Durable.MySql
                 PropertyInfo property = mapping.Value;
 
                 // Skip auto-increment primary keys
-                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
+                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
                 if (attr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true)
                     continue;
 
@@ -1184,7 +1106,7 @@ namespace Durable.MySql
 
             if (predicate != null)
             {
-                MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+                MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
                 string whereClause = parser.ParseExpressionWithParameters(predicate.Body);
                 sql += $" WHERE {whereClause}";
                 foreach (var p in parser.GetParameters()) parameters.Add(new SqlParameter(p.name, p.value));
@@ -1221,7 +1143,7 @@ namespace Durable.MySql
 
             if (predicate != null)
             {
-                MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+                MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
                 string whereClause = parser.ParseExpressionWithParameters(predicate.Body);
                 sql += $" WHERE {whereClause}";
                 foreach (var p in parser.GetParameters()) parameters.Add(new SqlParameter(p.name, p.value));
@@ -1253,7 +1175,7 @@ namespace Durable.MySql
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM `{_TableName}`");
@@ -1295,7 +1217,7 @@ namespace Durable.MySql
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM `{_TableName}`");
@@ -1336,7 +1258,7 @@ namespace Durable.MySql
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             // MySQL doesn't need explicit casting like SQLite, AVG function works with numeric types
@@ -1378,7 +1300,7 @@ namespace Durable.MySql
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM `{_TableName}`");
@@ -1424,7 +1346,7 @@ namespace Durable.MySql
 
             token.ThrowIfCancellationRequested();
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM `{_TableName}`");
@@ -1470,7 +1392,7 @@ namespace Durable.MySql
 
             token.ThrowIfCancellationRequested();
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM `{_TableName}`");
@@ -1515,7 +1437,7 @@ namespace Durable.MySql
 
             token.ThrowIfCancellationRequested();
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM `{_TableName}`");
@@ -1560,7 +1482,7 @@ namespace Durable.MySql
 
             token.ThrowIfCancellationRequested();
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM `{_TableName}`");
@@ -1631,7 +1553,7 @@ namespace Durable.MySql
                 PropertyInfo property = kvp.Value;
 
                 // Skip auto-increment primary keys
-                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
+                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
                 if (attr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true)
                     continue;
 
@@ -1643,7 +1565,7 @@ namespace Durable.MySql
             string insertSql = $"INSERT INTO `{_TableName}` ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.Name))})";
 
             // Check if we have an auto-increment primary key
-            PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
+            PropertyAttribute? pkAttr = _PrimaryKeyProperty.GetCustomAttribute<PropertyAttribute>();
             bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
 
             if (hasAutoIncrement)
@@ -1770,7 +1692,7 @@ namespace Durable.MySql
                 PropertyInfo property = kvp.Value;
 
                 // Skip auto-increment primary keys
-                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
+                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
                 if (attr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true)
                     continue;
 
@@ -1782,7 +1704,7 @@ namespace Durable.MySql
             string insertSql = $"INSERT INTO `{_TableName}` ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.Name))})";
 
             // Check if we have an auto-increment primary key
-            PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
+            PropertyAttribute? pkAttr = _PrimaryKeyProperty.GetCustomAttribute<PropertyAttribute>();
             bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
 
             if (hasAutoIncrement)
@@ -1889,7 +1811,7 @@ namespace Durable.MySql
 
                 if (columnName == _PrimaryKeyColumn)
                 {
-                    idValue = ConvertPrimaryKeyValue(value);
+                    idValue = value;
                 }
                 else if (_VersionColumnInfo != null && columnName == _VersionColumnInfo.ColumnName)
                 {
@@ -2047,7 +1969,7 @@ namespace Durable.MySql
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
             if (field == null) throw new ArgumentNullException(nameof(field));
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
@@ -2108,7 +2030,7 @@ namespace Durable.MySql
 
                 if (columnName == _PrimaryKeyColumn)
                 {
-                    idValue = ConvertPrimaryKeyValue(value);
+                    idValue = value;
                 }
                 else if (_VersionColumnInfo != null && columnName == _VersionColumnInfo.ColumnName)
                 {
@@ -2275,7 +2197,7 @@ namespace Durable.MySql
             if (field == null) throw new ArgumentNullException(nameof(field));
             token.ThrowIfCancellationRequested();
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
@@ -2353,7 +2275,7 @@ namespace Durable.MySql
         {
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
@@ -2431,7 +2353,7 @@ namespace Durable.MySql
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
             token.ThrowIfCancellationRequested();
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
@@ -2466,7 +2388,7 @@ namespace Durable.MySql
         {
             if (entity == null) throw new ArgumentNullException(nameof(entity));
 
-            object? id = ConvertPrimaryKeyValue(_PrimaryKeyProperty.GetValue(entity));
+            object? id = _PrimaryKeyProperty.GetValue(entity);
             if (id == null) throw new InvalidOperationException("Cannot delete entity with null primary key");
 
             // If the entity has a version column, use optimistic concurrency control
@@ -2520,7 +2442,6 @@ namespace Durable.MySql
         /// <exception cref="ArgumentNullException">Thrown when id is null.</exception>
         public bool DeleteById(object id, ITransaction? transaction = null)
         {
-            id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
 
             string sql = $"DELETE FROM `{_TableName}` WHERE `{_PrimaryKeyColumn}` = @id";
@@ -2598,7 +2519,7 @@ namespace Durable.MySql
             if (entity == null) throw new ArgumentNullException(nameof(entity));
             token.ThrowIfCancellationRequested();
 
-            object? id = ConvertPrimaryKeyValue(_PrimaryKeyProperty.GetValue(entity));
+            object? id = _PrimaryKeyProperty.GetValue(entity);
             if (id == null) throw new InvalidOperationException("Cannot delete entity with null primary key");
 
             // If the entity has a version column, use optimistic concurrency control
@@ -2654,7 +2575,6 @@ namespace Durable.MySql
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
         public async Task<bool> DeleteByIdAsync(object id, ITransaction? transaction = null, CancellationToken token = default)
         {
-            id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
             token.ThrowIfCancellationRequested();
 
@@ -3638,7 +3558,7 @@ namespace Durable.MySql
             {
                 string columnName = kvp.Key;
                 PropertyInfo property = kvp.Value;
-                PropertyAttribute? columnAttr = _MetadataProvider.GetColumn(property);
+                PropertyAttribute? columnAttr = property.GetCustomAttribute<PropertyAttribute>();
 
                 if (columnAttr != null &&
                     (columnAttr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey &&
@@ -3767,7 +3687,7 @@ namespace Durable.MySql
                 // If primary key is auto-increment, populate the IDs
                 if (_PrimaryKeyProperty != null)
                 {
-                    PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
+                    PropertyAttribute? pkAttr = _PrimaryKeyProperty.GetCustomAttribute<PropertyAttribute>();
                     bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
 
                     if (hasAutoIncrement)
@@ -3920,7 +3840,7 @@ namespace Durable.MySql
         /// <returns>The sanitized column name for the expression.</returns>
         internal string GetColumnFromExpression(Expression expression)
         {
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
             // The parser's GetColumnFromExpression already returns sanitized column names with backticks
             return parser.GetColumnFromExpression(expression);
         }
@@ -3992,7 +3912,7 @@ namespace Durable.MySql
             }
 
             // Get table name
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
             string tableName = entityAttr!.Name; // Already validated in ValidateTable
 
             // Check if table exists
@@ -4014,7 +3934,7 @@ namespace Durable.MySql
             if (!tableExists)
             {
                 // Create the table
-                MySqlSchemaBuilder schemaBuilder = new MySqlSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
+                MySqlSchemaBuilder schemaBuilder = new MySqlSchemaBuilder(_Sanitizer, _DataTypeConverter);
                 string createTableSql = schemaBuilder.BuildCreateTableSql(entityType);
 
                 if (transaction != null)
@@ -4058,7 +3978,7 @@ namespace Durable.MySql
             }
 
             // Get table name
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
             string tableName = entityAttr!.Name; // Already validated in ValidateTable
 
             // Check if table exists
@@ -4080,7 +4000,7 @@ namespace Durable.MySql
             if (!tableExists)
             {
                 // Create the table
-                MySqlSchemaBuilder schemaBuilder = new MySqlSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
+                MySqlSchemaBuilder schemaBuilder = new MySqlSchemaBuilder(_Sanitizer, _DataTypeConverter);
                 string createTableSql = schemaBuilder.BuildCreateTableSql(entityType);
 
                 if (transaction != null)
@@ -4213,7 +4133,7 @@ namespace Durable.MySql
             }
 
             // Check for Entity attribute
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
             if (entityAttr == null)
             {
                 errors.Add($"Type '{entityType.Name}' must have an [Entity] attribute");
@@ -4223,7 +4143,7 @@ namespace Durable.MySql
             // Check for at least one property with Property attribute
             PropertyInfo[] properties = entityType.GetProperties();
             List<PropertyInfo> mappedProperties = properties
-                .Where(p => _MetadataProvider.GetColumn(p) != null)
+                .Where(p => p.GetCustomAttribute<PropertyAttribute>() != null)
                 .ToList();
 
             if (mappedProperties.Count == 0)
@@ -4234,7 +4154,7 @@ namespace Durable.MySql
 
             // Check for primary key
             PropertyInfo? primaryKeyProperty = mappedProperties
-                .FirstOrDefault(p => _MetadataProvider.GetColumn(p)?.PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
+                .FirstOrDefault(p => p.GetCustomAttribute<PropertyAttribute>()?.PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
 
             if (primaryKeyProperty == null)
             {
@@ -4245,11 +4165,11 @@ namespace Durable.MySql
             // Validate foreign keys
             foreach (PropertyInfo property in mappedProperties)
             {
-                ForeignKeyAttribute? fkAttr = _MetadataProvider.GetForeignKey(property);
+                ForeignKeyAttribute? fkAttr = property.GetCustomAttribute<ForeignKeyAttribute>();
                 if (fkAttr != null)
                 {
                     // Check that referenced type has Entity attribute
-                    EntityAttribute? refEntityAttr = _MetadataProvider.GetEntity(fkAttr.ReferencedType);
+                    EntityAttribute? refEntityAttr = fkAttr.ReferencedType.GetCustomAttribute<EntityAttribute>();
                     if (refEntityAttr == null)
                     {
                         errors.Add($"Foreign key on property '{property.Name}' references type '{fkAttr.ReferencedType.Name}' which does not have an [Entity] attribute");
@@ -4264,7 +4184,7 @@ namespace Durable.MySql
                     else
                     {
                         // Check that referenced property has Property attribute
-                        PropertyAttribute? refPropAttr = _MetadataProvider.GetColumn(refProperty);
+                        PropertyAttribute? refPropAttr = refProperty.GetCustomAttribute<PropertyAttribute>();
                         if (refPropAttr == null)
                         {
                             errors.Add($"Foreign key on property '{property.Name}' references property '{fkAttr.ReferencedProperty}' on type '{fkAttr.ReferencedType.Name}' which does not have a [Property] attribute");
@@ -4289,7 +4209,7 @@ namespace Durable.MySql
                         // Check if entity columns exist in database
                         foreach (PropertyInfo prop in mappedProperties)
                         {
-                            PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
+                            PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
                             if (propAttr != null)
                             {
                                 if (!existingColumnNames.Contains(propAttr.Name, StringComparer.OrdinalIgnoreCase))
@@ -4305,7 +4225,7 @@ namespace Durable.MySql
                             bool foundInEntity = false;
                             foreach (PropertyInfo prop in mappedProperties)
                             {
-                                PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
+                                PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
                                 if (propAttr != null && propAttr.Name.Equals(dbColumn.Name, StringComparison.OrdinalIgnoreCase))
                                 {
                                     foundInEntity = true;
@@ -4364,7 +4284,7 @@ namespace Durable.MySql
         {
             ArgumentNullException.ThrowIfNull(entityType);
 
-            MySqlSchemaBuilder schemaBuilder = new MySqlSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
+            MySqlSchemaBuilder schemaBuilder = new MySqlSchemaBuilder(_Sanitizer, _DataTypeConverter);
             List<string> indexSqlStatements = schemaBuilder.BuildCreateIndexSql(entityType);
 
             if (indexSqlStatements.Count == 0)
@@ -4409,7 +4329,7 @@ namespace Durable.MySql
             ArgumentNullException.ThrowIfNull(entityType);
             cancellationToken.ThrowIfCancellationRequested();
 
-            MySqlSchemaBuilder schemaBuilder = new MySqlSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
+            MySqlSchemaBuilder schemaBuilder = new MySqlSchemaBuilder(_Sanitizer, _DataTypeConverter);
             List<string> indexSqlStatements = schemaBuilder.BuildCreateIndexSql(entityType);
 
             if (indexSqlStatements.Count == 0)
@@ -4458,7 +4378,7 @@ namespace Durable.MySql
             if (string.IsNullOrWhiteSpace(indexName))
                 throw new ArgumentNullException(nameof(indexName), "Index name cannot be null or empty");
 
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(typeof(T));
+            EntityAttribute? entityAttr = typeof(T).GetCustomAttribute<EntityAttribute>();
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{typeof(T).Name}' must have an Entity attribute");
 
@@ -4498,7 +4418,7 @@ namespace Durable.MySql
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(typeof(T));
+            EntityAttribute? entityAttr = typeof(T).GetCustomAttribute<EntityAttribute>();
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{typeof(T).Name}' must have an Entity attribute");
 
@@ -4535,7 +4455,7 @@ namespace Durable.MySql
         {
             ArgumentNullException.ThrowIfNull(entityType);
 
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 
@@ -4559,7 +4479,7 @@ namespace Durable.MySql
             ArgumentNullException.ThrowIfNull(entityType);
             cancellationToken.ThrowIfCancellationRequested();
 
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 

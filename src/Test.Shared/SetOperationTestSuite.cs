@@ -5,12 +5,12 @@ namespace Test.Shared
     using System.Linq;
     using System.Threading.Tasks;
     using Durable;
+    using Durable.Sql;
     using Xunit;
 
     /// <summary>
-    /// Coverage for SQL set operations (UNION, UNION ALL, INTERSECT, EXCEPT). These are only included by
-    /// <see cref="DurableTestSuites"/> for providers whose Durable implementation supports them
-    /// (SQLite and PostgreSQL); other providers do not currently generate correct set-operation SQL.
+    /// Coverage for SQL set operations (UNION, UNION ALL, INTERSECT, EXCEPT). Executed identically across all
+    /// database providers.
     /// </summary>
     public class SetOperationTestSuite : IDisposable
     {
@@ -41,10 +41,10 @@ namespace Test.Shared
         [Fact]
         public async Task UnionCombinesDistinct()
         {
-            IRepository<Author> repository = await SeedAsync();
+            ISqlRepository<Author> repository = await SeedAsync();
 
-            IQueryBuilder<Author> company1 = repository.Query().Where(a => a.CompanyId == 1);
-            IQueryBuilder<Author> company2 = repository.Query().Where(a => a.CompanyId == 2);
+            ISqlQueryBuilder<Author> company1 = repository.Query().Where(a => a.CompanyId == 1);
+            ISqlQueryBuilder<Author> company2 = repository.Query().Where(a => a.CompanyId == 2);
 
             List<Author> results = (await company1.Union(company2).ExecuteAsync()).ToList();
             Assert.Equal(4, results.Count);
@@ -56,10 +56,10 @@ namespace Test.Shared
         [Fact]
         public async Task UnionAllKeepsDuplicates()
         {
-            IRepository<Author> repository = await SeedAsync();
+            ISqlRepository<Author> repository = await SeedAsync();
 
-            IQueryBuilder<Author> company1 = repository.Query().Where(a => a.CompanyId == 1);
-            IQueryBuilder<Author> company1Again = repository.Query().Where(a => a.CompanyId == 1);
+            ISqlQueryBuilder<Author> company1 = repository.Query().Where(a => a.CompanyId == 1);
+            ISqlQueryBuilder<Author> company1Again = repository.Query().Where(a => a.CompanyId == 1);
 
             List<Author> results = (await company1.UnionAll(company1Again).ExecuteAsync()).ToList();
             Assert.Equal(4, results.Count);
@@ -71,10 +71,10 @@ namespace Test.Shared
         [Fact]
         public async Task IntersectReturnsCommonRows()
         {
-            IRepository<Author> repository = await SeedAsync();
+            ISqlRepository<Author> repository = await SeedAsync();
 
-            IQueryBuilder<Author> company1 = repository.Query().Where(a => a.CompanyId == 1);
-            IQueryBuilder<Author> named = repository.Query().Where(a => a.Name == "Alpha" || a.Name == "Gamma");
+            ISqlQueryBuilder<Author> company1 = repository.Query().Where(a => a.CompanyId == 1);
+            ISqlQueryBuilder<Author> named = repository.Query().Where(a => a.Name == "Alpha" || a.Name == "Gamma");
 
             List<Author> results = (await company1.Intersect(named).ExecuteAsync()).ToList();
             Assert.Single(results);
@@ -87,10 +87,10 @@ namespace Test.Shared
         [Fact]
         public async Task ExceptRemovesSecondQueryRows()
         {
-            IRepository<Author> repository = await SeedAsync();
+            ISqlRepository<Author> repository = await SeedAsync();
 
-            IQueryBuilder<Author> company1 = repository.Query().Where(a => a.CompanyId == 1);
-            IQueryBuilder<Author> named = repository.Query().Where(a => a.Name == "Alpha" || a.Name == "Gamma");
+            ISqlQueryBuilder<Author> company1 = repository.Query().Where(a => a.CompanyId == 1);
+            ISqlQueryBuilder<Author> named = repository.Query().Where(a => a.Name == "Alpha" || a.Name == "Gamma");
 
             List<Author> results = (await company1.Except(named).ExecuteAsync()).ToList();
             Assert.Single(results);
@@ -101,10 +101,10 @@ namespace Test.Shared
 
         #region Private-Methods
 
-        private async Task<IRepository<Author>> SeedAsync()
+        private async Task<ISqlRepository<Author>> SeedAsync()
         {
-            IRepository<Author> authorRepository = _Provider.CreateRepository<Author>();
-            IRepository<Book> bookRepository = _Provider.CreateRepository<Book>();
+            ISqlRepository<Author> authorRepository = _Provider.CreateRepository<Author>();
+            ISqlRepository<Book> bookRepository = _Provider.CreateRepository<Book>();
 
             await bookRepository.ExecuteSqlAsync("DELETE FROM books");
             await authorRepository.ExecuteSqlAsync("DELETE FROM authors");

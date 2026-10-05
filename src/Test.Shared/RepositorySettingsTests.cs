@@ -4,6 +4,7 @@ namespace Test.Shared
 {
     using System;
     using Durable;
+    using Durable.Sql;
     using Durable.Sqlite;
     using Microsoft.Data.Sqlite;
     using Xunit;
@@ -49,7 +50,7 @@ namespace Test.Shared
         public void Parse_NullConnectionString_ShouldThrowArgumentNullException()
         {
             // Act & Assert
-            Assert.Throws<ArgumentNullException>(() => SqliteRepositorySettings.Parse(null));
+            Assert.Throws<ArgumentNullException>(() => SqliteRepositorySettings.Parse(null!));
         }
 
         [Fact]
@@ -155,9 +156,9 @@ namespace Test.Shared
             // Assert
             Assert.True(type1 == type2); // Same identifier
             Assert.False(type1 == type3); // Different identifier
-#pragma warning disable CS1718 // Comparison made to same variable
-            Assert.True(RepositoryType.Sqlite == RepositoryType.Sqlite);
-#pragma warning restore CS1718
+            RepositoryType sqlite = RepositoryType.Sqlite;
+            RepositoryType sqliteAgain = RepositoryType.Sqlite;
+            Assert.True(sqlite == sqliteAgain); // Reflexive: the same well-known type compares equal
         }
 
         [Fact]

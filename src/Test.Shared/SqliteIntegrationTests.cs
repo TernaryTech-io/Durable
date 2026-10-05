@@ -6,6 +6,7 @@
     using System.Threading;
     using System.Threading.Tasks;
     using Durable;
+    using Durable.Sql;
     using Durable.Sqlite;
     using Microsoft.Data.Sqlite;
     using Xunit;
@@ -20,7 +21,7 @@
 
         #region Private-Members
 
-        private const string TestConnectionString = "Data Source=InMemoryIntegrationTest;Mode=Memory;Cache=Shared";
+        private const string TestConnectionString = "Data Source=file:/InMemoryIntegrationTest?vfs=memdb";
         private readonly SqliteConnection _KeepAliveConnection;
         private readonly SqliteRepository<Person> _Repository;
 
@@ -78,7 +79,7 @@
             Assert.Equal(31, updated.Age);
             Assert.Equal(55000, updated.Salary);
 
-            int count = _Repository.Count();
+            long count = _Repository.Count();
             Assert.Equal(1, count);
         }
 
@@ -107,7 +108,7 @@
 
             await transaction.CommitAsync();
 
-            Person retrieved = _Repository.ReadFirst(p => p.FirstName == "Jane");
+            Person? retrieved = _Repository.ReadFirst(p => p.FirstName == "Jane");
             Assert.NotNull(retrieved);
             Assert.Equal("Smith", retrieved.LastName);
         }
@@ -137,10 +138,12 @@
             IEnumerable<Person> updated = await _Repository.UpsertManyAsync(insertedList);
             Assert.Equal(3, updated.Count());
 
-            Person alice = _Repository.ReadFirst(p => p.FirstName == "Alice");
+            Person? alice = _Repository.ReadFirst(p => p.FirstName == "Alice");
+            Assert.NotNull(alice);
             Assert.Equal(26, alice.Age);
 
-            Person bob = _Repository.ReadFirst(p => p.FirstName == "Bob");
+            Person? bob = _Repository.ReadFirst(p => p.FirstName == "Bob");
+            Assert.NotNull(bob);
             Assert.Equal(70000, bob.Salary);
         }
 
@@ -200,7 +203,7 @@
             decimal engAvgSalary = _Repository.Average(p => p.Salary, p => p.Department == "Engineering");
             Assert.Equal(85000, engAvgSalary);
 
-            int engCount = await _Repository.CountAsync(p => p.Department == "Engineering");
+            long engCount = await _Repository.CountAsync(p => p.Department == "Engineering");
             Assert.Equal(2, engCount);
         }
 
@@ -221,13 +224,13 @@
 
             _Repository.CreateMany(people);
 
-            int totalCount = _Repository.Count();
+            long totalCount = _Repository.Count();
             Assert.Equal(3, totalCount);
 
-            int salesCount = _Repository.Count(p => p.Department == "Sales");
+            long salesCount = _Repository.Count(p => p.Department == "Sales");
             Assert.Equal(2, salesCount);
 
-            int over25Count = _Repository.Count(p => p.Age > 25);
+            long over25Count = _Repository.Count(p => p.Age > 25);
             Assert.Equal(1, over25Count);
         }
 
@@ -263,7 +266,7 @@
             int deleted = await _Repository.DeleteManyAsync(p => p.Department == "IT-Updated");
             Assert.Equal(3, deleted);
 
-            int remainingCount = _Repository.Count();
+            long remainingCount = _Repository.Count();
             Assert.Equal(0, remainingCount);
         }
 
@@ -288,7 +291,7 @@
 
             await transaction.CommitAsync();
 
-            int count = _Repository.Count(p => p.Department == "HR");
+            long count = _Repository.Count(p => p.Department == "HR");
             Assert.Equal(2, count);
         }
 
@@ -384,7 +387,7 @@
         {
             _Repository.DeleteAll();
 
-            int initialCount = _Repository.Count();
+            long initialCount = _Repository.Count();
 
             using ITransaction transaction = await _Repository.BeginTransactionAsync();
 
@@ -409,7 +412,7 @@
                 await transaction.RollbackAsync();
             }
 
-            int finalCount = _Repository.Count();
+            long finalCount = _Repository.Count();
             Assert.Equal(initialCount, finalCount);
         }
 

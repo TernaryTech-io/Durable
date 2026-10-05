@@ -1,38 +1,17 @@
 namespace Durable.SqlServer
 {
     using System;
-    using System.Collections;
-    using System.Collections.Generic;
-    using System.Globalization;
-    using System.Reflection;
     using System.Text.Json;
     using Durable;
-    using Durable.Metadata;
 
     /// <summary>
-    /// SQL Server-specific data type converter that maintains type fidelity for SQL Server parameter binding.
-    /// Handles SQL Server-specific types including UNIQUEIDENTIFIER, BIT, DATETIME2, and NVARCHAR.
+    /// SQL Server value conversion. SqlClient handles most types natively; unsigned integers are widened to the next
+    /// signed type SQL Server supports, and <see cref="TimeSpan"/> values are stored as BIGINT ticks because the TIME type
+    /// cannot hold durations of 24 hours or more.
+    /// Thread safety: stateless; safe for concurrent use.
     /// </summary>
-    public class SqlServerDataTypeConverter : IDataTypeConverter
+    public class SqlServerDataTypeConverter : DataTypeConverter
     {
-
-        #region Metadata
-
-        /// <summary>
-        /// Gets the metadata provider used to resolve property mapping hints.
-        /// </summary>
-        public IEntityMetadataProvider MetadataProvider { get; }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="SqlServerDataTypeConverter"/> class.
-        /// </summary>
-        /// <param name="metadataProvider">The metadata provider used to resolve property mapping hints. Defaults to <see cref="DurableConfiguration.DefaultMetadataProvider"/>.</param>
-        public SqlServerDataTypeConverter(IEntityMetadataProvider? metadataProvider = null)
-        {
-            MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
-        }
-
-        #endregion
 
         #region Private-Members
 
@@ -51,8 +30,7 @@ namespace Durable.SqlServer
         #region Public-Methods
 
         /// <summary>
-        /// Converts a .NET object to its SQL Server database parameter representation.
-        /// Preserves DateTime objects as DateTime for proper SQL Server parameter binding.
+        /// Instantiates the converter.
         /// </summary>
         /// <param name="value">The value to convert.</param>
         /// <param name="targetType">The target database type.</param>
@@ -114,7 +92,7 @@ namespace Durable.SqlServer
             if (valueType.IsEnum)
             {
                 // Check for PropertyAttribute flags to determine storage preference
-                PropertyAttribute? attr = MetadataProvider.GetColumn(propertyInfo);
+                PropertyAttribute? attr = propertyInfo?.GetCustomAttribute<PropertyAttribute>();
                 if (attr != null && (attr.PropertyFlags & Flags.String) != Flags.String)
                 {
                     // If String flag is NOT set, store as integer
@@ -125,12 +103,6 @@ namespace Durable.SqlServer
             }
 
             // Array and Collection handling - serialize to JSON for SQL Server nvarchar(max)
-            // Byte array handling - bind directly as binary
-            if (valueType == typeof(byte[]))
-            {
-                return value;
-            }
-
             if (valueType.IsArray || (valueType.IsGenericType &&
                 (typeof(IEnumerable).IsAssignableFrom(valueType) && valueType != typeof(string))))
             {
@@ -292,12 +264,6 @@ namespace Durable.SqlServer
             }
 
             // Array and Collection handling - deserialize from JSON
-            // Byte array handling - binary columns are returned as byte[]
-            if (targetType == typeof(byte[]) && value is byte[])
-            {
-                return value;
-            }
-
             if (targetType.IsArray || (targetType.IsGenericType &&
                 (typeof(IEnumerable).IsAssignableFrom(targetType) && targetType != typeof(string))))
             {
@@ -340,7 +306,7 @@ namespace Durable.SqlServer
             type = Nullable.GetUnderlyingType(type) ?? type;
 
             // Check for PropertyAttribute
-            PropertyAttribute? attr = MetadataProvider.GetColumn(propertyInfo);
+            PropertyAttribute? attr = propertyInfo?.GetCustomAttribute<PropertyAttribute>();
 
             // SQL Server type mappings
             if (type == typeof(bool))

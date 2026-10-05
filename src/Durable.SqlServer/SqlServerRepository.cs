@@ -3,23 +3,16 @@ namespace Durable.SqlServer
     using System;
     using System.Collections.Generic;
     using System.Data;
-    using System.Data.Common;
-    using System.Linq;
-    using System.Linq.Expressions;
-    using System.Reflection;
-    using System.Runtime.CompilerServices;
-    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.Data.SqlClient;
     using Durable.ConcurrencyConflictResolvers;
     using Durable.DefaultValueProviders;
-    using Durable.Metadata;
 
     /// <summary>
-    /// SQL Server Repository Implementation with Full Transaction Support and Connection Pooling.
-    /// Provides comprehensive data access operations for entities with support for optimistic concurrency,
-    /// batch operations, SQL capture, and advanced querying capabilities.
+    /// SQL Server repository for <typeparamref name="T"/>. All behavior comes from <see cref="SqlRepository{T}"/>; this class
+    /// supplies the SQL Server dialect and connection handling, <see cref="SqlBulkCopy"/> bulk insert, and database creation.
+    /// Thread safety: safe for concurrent use.
     /// </summary>
     /// <typeparam name="T">The entity type that this repository manages. Must be a class with a parameterless constructor.</typeparam>
     public class SqlServerRepository<T> : IRepository<T>, IBatchInsertConfiguration, ISqlCapture, ISqlTrackingConfiguration, IDisposable where T : class, new()
@@ -104,8 +97,6 @@ namespace Durable.SqlServer
 
         internal readonly IConnectionFactory _ConnectionFactory;
         internal readonly string _TableName;
-        internal readonly string? _Schema;
-        internal readonly string _QualifiedTableName;
         internal readonly string _PrimaryKeyColumn;
         internal readonly PropertyInfo _PrimaryKeyProperty;
         internal readonly Dictionary<string, PropertyInfo> _ColumnMappings;
@@ -114,7 +105,6 @@ namespace Durable.SqlServer
         internal readonly IBatchInsertConfiguration _BatchConfig;
         internal readonly ISanitizer _Sanitizer;
         internal readonly IDataTypeConverter _DataTypeConverter;
-        internal readonly IEntityMetadataProvider _MetadataProvider;
         internal readonly VersionColumnInfo? _VersionColumnInfo;
         internal readonly IConcurrencyConflictResolver<T> _ConflictResolver;
         internal readonly IChangeTracker<T> _ChangeTracker;
@@ -131,28 +121,23 @@ namespace Durable.SqlServer
         #region Constructors-and-Factories
 
         /// <summary>
-        /// Initializes a new instance of the SqlServerRepository with a connection string and optional configuration.
-        /// Creates an internal SqlServerConnectionFactory for connection management.
+        /// Creates a repository from a connection string. The repository owns its connection factory and disposes it.
         /// </summary>
         /// <param name="connectionString">The SQL Server connection string used to connect to the database.</param>
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
-        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when connectionString is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
-        public SqlServerRepository(string connectionString, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
+        public SqlServerRepository(string connectionString, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null)
         {
             ArgumentNullException.ThrowIfNull(connectionString);
             Settings = SqlServerRepositorySettings.Parse(connectionString);
             _ConnectionFactory = new SqlServerConnectionFactory(connectionString);
             _OwnsConnectionFactory = true; // We created this factory, so we own it
-            _Sanitizer = new SqlServerSanitizer(metadataProvider);
-            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
-            _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter(_MetadataProvider);
+            _Sanitizer = new SqlServerSanitizer();
+            _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter();
             _TableName = GetEntityName();
-            _Schema = _MetadataProvider.GetEntityMetadata(typeof(T)).Schema;
-            _QualifiedTableName = _Sanitizer.SanitizeTableName(_TableName, _Schema);
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
             _PrimaryKeyProperty = primaryKeyInfo.Property;
@@ -167,29 +152,24 @@ namespace Durable.SqlServer
         }
 
         /// <summary>
-        /// Initializes a new instance of the SqlServerRepository with repository settings and optional configuration.
-        /// Creates an internal SqlServerConnectionFactory using the connection string built from settings.
+        /// Creates a repository from settings. The repository owns its connection factory and disposes it.
         /// </summary>
         /// <param name="settings">The SQL Server repository settings to use for configuration.</param>
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
-        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when settings is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key), or when settings are invalid.</exception>
-        public SqlServerRepository(SqlServerRepositorySettings settings, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
+        public SqlServerRepository(SqlServerRepositorySettings settings, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null)
         {
             ArgumentNullException.ThrowIfNull(settings);
             Settings = settings;
             string connectionString = settings.BuildConnectionString();
             _ConnectionFactory = new SqlServerConnectionFactory(connectionString);
             _OwnsConnectionFactory = true; // We created this factory, so we own it
-            _Sanitizer = new SqlServerSanitizer(metadataProvider);
-            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
-            _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter(_MetadataProvider);
+            _Sanitizer = new SqlServerSanitizer();
+            _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter();
             _TableName = GetEntityName();
-            _Schema = _MetadataProvider.GetEntityMetadata(typeof(T)).Schema;
-            _QualifiedTableName = _Sanitizer.SanitizeTableName(_TableName, _Schema);
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
             _PrimaryKeyProperty = primaryKeyInfo.Property;
@@ -204,28 +184,22 @@ namespace Durable.SqlServer
         }
 
         /// <summary>
-        /// Initializes a new instance of the SqlServerRepository with a provided connection factory and optional configuration.
-        /// Allows for shared connection pooling and factory management across multiple repository instances.
-        /// Note: When using this constructor, the Settings property will be null as no connection string is directly provided.
+        /// Creates a repository on a shared connection factory. The factory is not disposed with the repository.
         /// </summary>
         /// <param name="connectionFactory">The connection factory to use for database connections.</param>
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
-        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when connectionFactory is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
-        public SqlServerRepository(IConnectionFactory connectionFactory, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
+        public SqlServerRepository(IConnectionFactory connectionFactory, IBatchInsertConfiguration? batchConfig = null, IDataTypeConverter? dataTypeConverter = null, IConcurrencyConflictResolver<T>? conflictResolver = null)
         {
             _ConnectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
             _OwnsConnectionFactory = false; // External factory, we don't own it
             Settings = null!;
-            _Sanitizer = new SqlServerSanitizer(metadataProvider);
-            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
-            _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter(_MetadataProvider);
+            _Sanitizer = new SqlServerSanitizer();
+            _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter();
             _TableName = GetEntityName();
-            _Schema = _MetadataProvider.GetEntityMetadata(typeof(T)).Schema;
-            _QualifiedTableName = _Sanitizer.SanitizeTableName(_TableName, _Schema);
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
             _PrimaryKeyProperty = primaryKeyInfo.Property;
@@ -356,18 +330,49 @@ namespace Durable.SqlServer
         /// <returns>A new transaction instance.</returns>
         public ITransaction BeginTransaction()
         {
-            return _ConnectionFactory.BeginTransaction();
+            SqlConnection? connection = null;
+            try
+            {
+                connection = (SqlConnection)PooledConnectionHandle.Unwrap(_ConnectionFactory.GetConnection());
+                EnsureConnectionOpen(connection);
+                SqlTransaction transaction = connection.BeginTransaction();
+                SqlServerRepositoryTransaction result = new SqlServerRepositoryTransaction(connection, transaction, _ConnectionFactory);
+                connection = null; // Transaction now owns the connection
+                return result;
+            }
+            finally
+            {
+                if (connection != null)
+                {
+                    _ConnectionFactory.ReturnConnection(connection);
+                }
+            }
         }
-
 
         /// <summary>
         /// Asynchronously begins a new database transaction.
         /// </summary>
         /// <param name="token">A cancellation token to cancel the operation.</param>
         /// <returns>A task representing the asynchronous operation with a new transaction instance.</returns>
-        public Task<ITransaction> BeginTransactionAsync(CancellationToken token = default)
+        public async Task<ITransaction> BeginTransactionAsync(CancellationToken token = default)
         {
-            return _ConnectionFactory.BeginTransactionAsync(token);
+            SqlConnection? connection = null;
+            try
+            {
+                connection = (SqlConnection)PooledConnectionHandle.Unwrap(await _ConnectionFactory.GetConnectionAsync(token).ConfigureAwait(false));
+                await EnsureConnectionOpenAsync(connection, token).ConfigureAwait(false);
+                SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync(token).ConfigureAwait(false);
+                SqlServerRepositoryTransaction result = new SqlServerRepositoryTransaction(connection, transaction, _ConnectionFactory);
+                connection = null; // Transaction now owns the connection
+                return result;
+            }
+            finally
+            {
+                if (connection != null)
+                {
+                    await _ConnectionFactory.ReturnConnectionAsync(connection).ConfigureAwait(false);
+                }
+            }
         }
 
         #endregion
@@ -375,159 +380,65 @@ namespace Durable.SqlServer
         #region Private-Methods
 
         /// <summary>
-        /// Converts a primary key value to its database representation using the data type converter,
-        /// so that custom key types bind correctly as parameters. Values that are not of the key
-        /// property's type (e.g. already converted) are returned unchanged.
+        /// Creates the database named in the settings when it does not exist, connecting to master.
         /// </summary>
-        /// <param name="id">The primary key value.</param>
-        /// <returns>The converted value, or null when id is null.</returns>
-        private object? ConvertPrimaryKeyValue(object? id)
+        /// <exception cref="InvalidOperationException">Thrown when no database name is configured.</exception>
+        public override void CreateDatabaseIfNotExists()
         {
-            Type keyType = Nullable.GetUnderlyingType(_PrimaryKeyProperty.PropertyType) ?? _PrimaryKeyProperty.PropertyType;
-            if (id == null || !keyType.IsInstanceOfType(id)) return id;
-            return _DataTypeConverter.ConvertToDatabase(id, _PrimaryKeyProperty.PropertyType, _PrimaryKeyProperty);
+            ThrowIfDisposed();
+            SqlConnectionStringBuilder builder = MasterConnection(out string database);
+            using SqlConnection connection = new SqlConnection(builder.ToString());
+            connection.Open();
+            using SqlCommand command = CreateDatabaseCommand(connection, database);
+            command.ExecuteNonQuery();
         }
 
         /// <summary>
-        /// Ensures the connection is open in a thread-safe manner.
-        /// Handles race conditions where connection state might change between check and open operations.
+        /// Creates the database named in the settings when it does not exist.
         /// </summary>
-        /// <param name="connection">The database connection to ensure is open</param>
-        private static void EnsureConnectionOpen(System.Data.Common.DbConnection connection)
+        /// <param name="token">Cancellation token.</param>
+        /// <returns>A task.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when no database name is configured.</exception>
+        public override async Task CreateDatabaseIfNotExistsAsync(CancellationToken token = default)
         {
-            if (connection.State == ConnectionState.Open)
-                return;
-
-            try
-            {
-                connection.Open();
-            }
-            catch (InvalidOperationException)
-            {
-                // Connection might already be open due to race condition, verify state
-                if (connection.State != ConnectionState.Open)
-                    throw;
-            }
-        }
-
-        /// <summary>
-        /// Asynchronously ensures the connection is open in a thread-safe manner.
-        /// Handles race conditions where connection state might change between check and open operations.
-        /// </summary>
-        /// <param name="connection">The database connection to ensure is open</param>
-        /// <param name="token">Cancellation token for the async operation</param>
-        private static async Task EnsureConnectionOpenAsync(System.Data.Common.DbConnection connection, CancellationToken token = default)
-        {
-            if (connection.State == ConnectionState.Open)
-                return;
-
-            try
+            ThrowIfDisposed();
+            SqlConnectionStringBuilder builder = MasterConnection(out string database);
+            SqlConnection connection = new SqlConnection(builder.ToString());
+            await using (connection.ConfigureAwait(false))
             {
                 await connection.OpenAsync(token).ConfigureAwait(false);
-            }
-            catch (InvalidOperationException)
-            {
-                // Connection might already be open due to race condition, verify state
-                if (connection.State != ConnectionState.Open)
-                    throw;
+                SqlCommand command = CreateDatabaseCommand(connection, database);
+                await using (command.ConfigureAwait(false))
+                {
+                    await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                }
             }
         }
 
+        #endregion
+
+        #region Private-Methods
+
         /// <summary>
-        /// Creates an approximation of the original entity state for MergeChangesResolver.
-        /// This is needed because the repository doesn't track original entity state.
+        /// Inserts rows with <see cref="SqlBulkCopy"/> inside the transaction.
         /// </summary>
-        /// <param name="currentEntity">The current entity state from the database</param>
-        /// <param name="incomingEntity">The incoming entity from the client</param>
-        /// <returns>An approximated original entity for merge operations</returns>
-        private T CreateOriginalEntityApproximation(T currentEntity, T incomingEntity)
+        /// <param name="lease">Lease inside a transaction.</param>
+        /// <param name="entities">Prepared entities.</param>
+        /// <returns>Rows inserted.</returns>
+        protected override long BulkInsertCore(ConnectionLease lease, IReadOnlyList<T> entities)
         {
-            try
-            {
-                // Create a new instance for the original entity approximation
-                T originalEntity = (T)Activator.CreateInstance(typeof(T))!;
-                PropertyInfo[] properties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
-
-                foreach (PropertyInfo property in properties)
-                {
-                    if (property.CanRead && property.CanWrite)
-                    {
-                        // For version column, use the incoming entity's version (what client originally had)
-                        if (property.Name == "Version" ||
-                            (_VersionColumnInfo != null && property.Name == _VersionColumnInfo.Property.Name))
-                        {
-                            property.SetValue(originalEntity, property.GetValue(incomingEntity));
-                        }
-                        else
-                        {
-                            // For merge scenarios, we create a hybrid approach:
-                            // - If current and incoming values are different, use current (assuming server won)
-                            // - If they're the same, use that value
-                            object? currentValue = property.GetValue(currentEntity);
-                            object? incomingValue = property.GetValue(incomingEntity);
-
-                            // Use current entity's value as baseline - this assumes current represents
-                            // a more recent state that we want to preserve during merge operations
-                            property.SetValue(originalEntity, currentValue);
-                        }
-                    }
-                }
-
-                return originalEntity;
-            }
-            catch (Exception)
-            {
-                // If we can't create the approximation, fall back to using the incoming entity
-                return incomingEntity;
-            }
+            using SqlBulkCopy bulkCopy = CreateBulkCopy(lease);
+            bulkCopy.WriteToServer(ToDataTable(entities));
+            return entities.Count;
         }
 
         /// <summary>
-        /// Safely converts a database result to the specified type using the data type converter.
-        /// Handles type conversion failures gracefully with detailed error messages.
-        /// </summary>
-        /// <typeparam name="TResult">The target type to convert to</typeparam>
-        /// <param name="result">The database result to convert</param>
-        /// <returns>The converted result</returns>
-        /// <exception cref="InvalidCastException">Thrown when the conversion fails with detailed type information</exception>
-        private TResult SafeConvertDatabaseResult<TResult>(object? result)
-        {
-            if (result == DBNull.Value || result == null)
-                return default(TResult)!;
-
-            try
-            {
-                object? converted = _DataTypeConverter.ConvertFromDatabase(result, typeof(TResult));
-
-                if (converted == null && !typeof(TResult).IsClass && Nullable.GetUnderlyingType(typeof(TResult)) == null)
-                {
-                    throw new InvalidCastException($"Cannot convert null to non-nullable value type '{typeof(TResult).Name}'");
-                }
-
-                if (converted != null && !typeof(TResult).IsAssignableFrom(converted.GetType()))
-                {
-                    throw new InvalidCastException($"Cannot cast '{converted.GetType().Name}' to '{typeof(TResult).Name}'. DataTypeConverter returned incompatible type.");
-                }
-
-                return (TResult)converted!;
-            }
-            catch (InvalidCastException)
-            {
-                throw; // Re-throw our own InvalidCastExceptions
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidCastException($"Failed to convert database result of type '{result?.GetType().Name ?? "null"}' to '{typeof(TResult).Name}'. Original error: {ex.Message}", ex);
-            }
-        }
-
-        /// <summary>
-        /// Gets the entity name (table name) for this repository.
+        /// Inserts rows with <see cref="SqlBulkCopy"/> inside the transaction.
         /// </summary>
         /// <returns>The table name</returns>
         public string GetEntityName()
         {
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(typeof(T));
+            EntityAttribute? entityAttr = typeof(T).GetCustomAttribute<EntityAttribute>();
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type {typeof(T).Name} must be decorated with [Entity] attribute");
             return entityAttr.Name;
@@ -537,12 +448,12 @@ namespace Durable.SqlServer
         {
             PropertyInfo[] properties = typeof(T).GetProperties();
             PropertyInfo? pkProperty = properties.FirstOrDefault(p =>
-                _MetadataProvider.GetColumn(p)?.PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
+                p.GetCustomAttribute<PropertyAttribute>()?.PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
 
             if (pkProperty == null)
                 throw new InvalidOperationException($"Type {typeof(T).Name} must have a property with [Property] attribute and PrimaryKey flag");
 
-            PropertyAttribute? attr = _MetadataProvider.GetColumn(pkProperty);
+            PropertyAttribute? attr = pkProperty.GetCustomAttribute<PropertyAttribute>();
             return new PrimaryKeyInfo(attr!.Name, pkProperty);
         }
 
@@ -557,7 +468,7 @@ namespace Durable.SqlServer
 
             foreach (PropertyInfo property in properties)
             {
-                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
+                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
                 if (attr != null)
                 {
                     mappings[attr.Name] = property;
@@ -578,7 +489,7 @@ namespace Durable.SqlServer
 
             foreach (PropertyInfo property in properties)
             {
-                ForeignKeyAttribute? attr = _MetadataProvider.GetForeignKey(property);
+                ForeignKeyAttribute? attr = property.GetCustomAttribute<ForeignKeyAttribute>();
                 if (attr != null)
                 {
                     foreignKeys[property] = attr;
@@ -599,7 +510,7 @@ namespace Durable.SqlServer
 
             foreach (PropertyInfo property in properties)
             {
-                NavigationPropertyAttribute? attr = _MetadataProvider.GetNavigation(property);
+                NavigationPropertyAttribute? attr = property.GetCustomAttribute<NavigationPropertyAttribute>();
                 if (attr != null)
                 {
                     navigationProps[property] = attr;
@@ -618,10 +529,10 @@ namespace Durable.SqlServer
             PropertyInfo[] properties = typeof(T).GetProperties();
             foreach (PropertyInfo property in properties)
             {
-                VersionColumnAttribute? attr = _MetadataProvider.GetVersionColumn(property);
+                VersionColumnAttribute? attr = property.GetCustomAttribute<VersionColumnAttribute>();
                 if (attr != null)
                 {
-                    PropertyAttribute? propAttr = _MetadataProvider.GetColumn(property);
+                    PropertyAttribute? propAttr = property.GetCustomAttribute<PropertyAttribute>();
                     if (propAttr == null)
                         throw new InvalidOperationException($"Version column property {property.Name} must have [Property] attribute");
 
@@ -649,7 +560,7 @@ namespace Durable.SqlServer
 
             foreach (PropertyInfo property in properties)
             {
-                DefaultValueAttribute? attr = _MetadataProvider.GetDefaultValue(property);
+                DefaultValueAttribute? attr = property.GetCustomAttribute<DefaultValueAttribute>();
                 if (attr != null)
                 {
                     IDefaultValueProvider provider;
@@ -700,7 +611,7 @@ namespace Durable.SqlServer
                 PropertyInfo property = mapping.Value;
 
                 // Skip auto-increment primary keys
-                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
+                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
                 if (attr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true)
                     continue;
 
@@ -709,7 +620,7 @@ namespace Durable.SqlServer
                 values.Add(_Sanitizer.FormatValue(value!, property));
             }
 
-            string sql = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)})";
+            string sql = $"INSERT INTO [{_TableName}] ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)})";
             return sql;
         }
 
@@ -1047,203 +958,9 @@ namespace Durable.SqlServer
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
         public async Task<T?> ReadFirstAsync(Expression<Func<T, bool>>? predicate = null, ITransaction? transaction = null, CancellationToken token = default)
         {
-            token.ThrowIfCancellationRequested();
-
-            IQueryBuilder<T> query = Query(transaction);
-            if (predicate != null)
-                query = query.Where(predicate);
-
-            // SQL Server requires ORDER BY when using Take() - order by primary key
-            ParameterExpression param = Expression.Parameter(typeof(T), "x");
-            MemberExpression pkMember = Expression.Property(param, _PrimaryKeyProperty);
-            Expression<Func<T, object>> pkSelector = Expression.Lambda<Func<T, object>>(Expression.Convert(pkMember, typeof(object)), param);
-            query = query.OrderBy(pkSelector);
-
-            IEnumerable<T> results = await query.Take(1).ExecuteAsync(token).ConfigureAwait(false);
-            return results.FirstOrDefault()!;
-        }
-
-        /// <summary>
-        /// Asynchronously reads the first entity that matches the specified predicate, or returns default if no match is found.
-        /// </summary>
-        /// <param name="predicate">Optional predicate to filter entities. If null, returns the first entity</param>
-        /// <param name="transaction">Optional transaction to execute within</param>
-        /// <param name="token">Cancellation token for the async operation</param>
-        /// <returns>The first entity that matches the predicate, or default(T) if no match is found</returns>
-        /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
-        public async Task<T?> ReadFirstOrDefaultAsync(Expression<Func<T, bool>>? predicate = null, ITransaction? transaction = null, CancellationToken token = default)
-        {
-            return await ReadFirstAsync(predicate, transaction, token).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Asynchronously reads a single entity that matches the specified predicate. Throws an exception if zero or more than one entity is found.
-        /// </summary>
-        /// <param name="predicate">The predicate to filter entities</param>
-        /// <param name="transaction">Optional transaction to execute within</param>
-        /// <param name="token">Cancellation token for the async operation</param>
-        /// <returns>The single entity that matches the predicate</returns>
-        /// <exception cref="ArgumentNullException">Thrown when predicate is null</exception>
-        /// <exception cref="InvalidOperationException">Thrown when zero or more than one entity matches the predicate</exception>
-        /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
-        public async Task<T> ReadSingleAsync(Expression<Func<T, bool>> predicate, ITransaction? transaction = null, CancellationToken token = default)
-        {
-            if (predicate == null)
-                throw new ArgumentNullException(nameof(predicate));
-
-            token.ThrowIfCancellationRequested();
-
-            IEnumerable<T> results = await Query(transaction).Where(predicate).Take(2).ExecuteAsync(token).ConfigureAwait(false);
-            List<T> resultsList = results.ToList();
-
-            if (resultsList.Count != 1)
-                throw new InvalidOperationException($"Expected exactly 1 result but found {resultsList.Count}");
-
-            return resultsList[0];
-        }
-
-        /// <summary>
-        /// Asynchronously reads a single entity that matches the specified predicate, or returns default if no match is found. Throws an exception if more than one entity is found.
-        /// </summary>
-        /// <param name="predicate">The predicate to filter entities</param>
-        /// <param name="transaction">Optional transaction to execute within</param>
-        /// <param name="token">Cancellation token for the async operation</param>
-        /// <returns>The single entity that matches the predicate, or default(T) if no match is found</returns>
-        /// <exception cref="ArgumentNullException">Thrown when predicate is null</exception>
-        /// <exception cref="InvalidOperationException">Thrown when more than one entity matches the predicate</exception>
-        /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
-        public async Task<T?> ReadSingleOrDefaultAsync(Expression<Func<T, bool>> predicate, ITransaction? transaction = null, CancellationToken token = default)
-        {
-            if (predicate == null)
-                throw new ArgumentNullException(nameof(predicate));
-
-            token.ThrowIfCancellationRequested();
-
-            IEnumerable<T> results = await Query(transaction).Where(predicate).Take(2).ExecuteAsync(token).ConfigureAwait(false);
-            List<T> resultsList = results.ToList();
-
-            if (resultsList.Count > 1)
-                throw new InvalidOperationException($"Expected 0 or 1 result but found {resultsList.Count}");
-
-            return resultsList.FirstOrDefault()!;
-        }
-
-        /// <summary>
-        /// Asynchronously reads multiple entities that match the optional predicate as an async enumerable.
-        /// </summary>
-        /// <param name="predicate">Optional predicate to filter entities. If null, returns all entities</param>
-        /// <param name="transaction">Optional transaction to execute within</param>
-        /// <param name="token">Cancellation token for the async operation</param>
-        /// <returns>An async enumerable of entities that match the predicate</returns>
-        /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
-        public async IAsyncEnumerable<T> ReadManyAsync(Expression<Func<T, bool>>? predicate = null, ITransaction? transaction = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token = default)
-        {
-            token.ThrowIfCancellationRequested();
-
-            IQueryBuilder<T> query = Query(transaction);
-            if (predicate != null)
-                query = query.Where(predicate);
-
-            IEnumerable<T> results = await query.ExecuteAsync(token).ConfigureAwait(false);
-
-            foreach (T entity in results)
-            {
-                token.ThrowIfCancellationRequested();
-                yield return entity;
-            }
-        }
-
-        /// <summary>
-        /// Asynchronously reads all entities as an async enumerable.
-        /// </summary>
-        /// <param name="transaction">Optional transaction to execute within</param>
-        /// <param name="token">Cancellation token for the async operation</param>
-        /// <returns>An async enumerable of all entities</returns>
-        /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
-        public IAsyncEnumerable<T> ReadAllAsync(ITransaction? transaction = null, CancellationToken token = default)
-        {
-            return ReadManyAsync(null, transaction, token);
-        }
-
-        /// <summary>
-        /// Asynchronously reads an entity by its identifier.
-        /// </summary>
-        /// <param name="id">The identifier of the entity to read</param>
-        /// <param name="transaction">Optional transaction to execute within</param>
-        /// <param name="token">Cancellation token for the async operation</param>
-        /// <returns>The entity with the specified identifier, or null if not found</returns>
-        /// <exception cref="ArgumentNullException">Thrown when id is null</exception>
-        /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
-        public async Task<T?> ReadByIdAsync(object id, ITransaction? transaction = null, CancellationToken token = default)
-        {
-            if (id == null)
-                throw new ArgumentNullException(nameof(id));
-
-            token.ThrowIfCancellationRequested();
-
-            IEnumerable<T> results = await Query(transaction).Where(BuildIdPredicate(id)).ExecuteAsync(token).ConfigureAwait(false);
-            return results.FirstOrDefault()!;
-        }
-
-        /// <summary>
-        /// Checks if any entity exists that matches the specified predicate.
-        /// </summary>
-        /// <param name="predicate">The predicate to filter entities.</param>
-        /// <param name="transaction">Optional transaction to execute within.</param>
-        /// <returns>True if any entity matches the predicate, false otherwise.</returns>
-        public bool Exists(Expression<Func<T, bool>> predicate, ITransaction? transaction = null)
-        {
-            return Query(transaction).Where(predicate).Take(1).Execute().Any();
-        }
-
-        /// <summary>
-        /// Checks if an entity exists with the specified identifier.
-        /// </summary>
-        /// <param name="id">The identifier to check for.</param>
-        /// <param name="transaction">Optional transaction to execute within.</param>
-        /// <returns>True if an entity with the specified id exists, false otherwise.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when id is null.</exception>
-        public bool ExistsById(object id, ITransaction? transaction = null)
-        {
-            if (id == null) throw new ArgumentNullException(nameof(id));
-            return Query(transaction).Where(BuildIdPredicate(id)).Take(1).Execute().Any();
-        }
-
-        /// <summary>
-        /// Asynchronously checks if any entity exists that matches the specified predicate.
-        /// </summary>
-        /// <param name="predicate">The predicate to filter entities</param>
-        /// <param name="transaction">Optional transaction to execute within</param>
-        /// <param name="token">Cancellation token for the async operation</param>
-        /// <returns>True if any entity matches the predicate, false otherwise</returns>
-        /// <exception cref="ArgumentNullException">Thrown when predicate is null</exception>
-        /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
-        public async Task<bool> ExistsAsync(Expression<Func<T, bool>> predicate, ITransaction? transaction = null, CancellationToken token = default)
-        {
-            if (predicate == null)
-                throw new ArgumentNullException(nameof(predicate));
-
-            token.ThrowIfCancellationRequested();
-
-            IEnumerable<T> results = await Query(transaction).Where(predicate).Take(1).ExecuteAsync(token).ConfigureAwait(false);
-            return results.Any();
-        }
-
-        /// <summary>
-        /// Asynchronously checks if an entity exists with the specified identifier.
-        /// </summary>
-        /// <param name="id">The identifier to check for</param>
-        /// <param name="transaction">Optional transaction to execute within</param>
-        /// <param name="token">Cancellation token for the async operation</param>
-        /// <returns>True if an entity with the specified id exists, false otherwise</returns>
-        /// <exception cref="ArgumentNullException">Thrown when id is null</exception>
-        /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
-        public async Task<bool> ExistsByIdAsync(object id, ITransaction? transaction = null, CancellationToken token = default)
-        {
-            if (id == null)
-                throw new ArgumentNullException(nameof(id));
-
-            return await ExistsAsync(BuildIdPredicate(id), transaction, token).ConfigureAwait(false);
+            using SqlBulkCopy bulkCopy = CreateBulkCopy(lease);
+            await bulkCopy.WriteToServerAsync(ToDataTable(entities), token).ConfigureAwait(false);
+            return entities.Count;
         }
 
         /// <summary>
@@ -1257,12 +974,12 @@ namespace Durable.SqlServer
             // Use ambient transaction if no explicit transaction provided
             transaction ??= TransactionScope.Current?.Transaction;
 
-            string sql = $"SELECT COUNT(*) FROM {_QualifiedTableName}";
+            string sql = $"SELECT COUNT(*) FROM [{_TableName}]";
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
             if (predicate != null)
             {
-                SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+                SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
                 string whereClause = parser.ParseExpressionWithParameters(predicate.Body);
                 sql += $" WHERE {whereClause}";
                 parameters.AddRange(parser.GetParameters());
@@ -1303,12 +1020,12 @@ namespace Durable.SqlServer
             // Use ambient transaction if no explicit transaction provided
             transaction ??= TransactionScope.Current?.Transaction;
 
-            string sql = $"SELECT COUNT(*) FROM {_QualifiedTableName}";
+            string sql = $"SELECT COUNT(*) FROM [{_TableName}]";
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
             if (predicate != null)
             {
-                SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+                SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
                 string whereClause = parser.ParseExpressionWithParameters(predicate.Body);
                 sql += $" WHERE {whereClause}";
                 parameters.AddRange(parser.GetParameters());
@@ -1349,10 +1066,10 @@ namespace Durable.SqlServer
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM {_QualifiedTableName}");
+            StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM [{_TableName}]");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1400,10 +1117,10 @@ namespace Durable.SqlServer
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM {_QualifiedTableName}");
+            StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM [{_TableName}]");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1450,11 +1167,11 @@ namespace Durable.SqlServer
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             // SQL Server doesn't need explicit casting like SQLite, AVG function works with numeric types
-            StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM {_QualifiedTableName}");
+            StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM [{_TableName}]");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1501,10 +1218,10 @@ namespace Durable.SqlServer
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM {_QualifiedTableName}");
+            StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM [{_TableName}]");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1556,10 +1273,10 @@ namespace Durable.SqlServer
 
             token.ThrowIfCancellationRequested();
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM {_QualifiedTableName}");
+            StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM [{_TableName}]");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1611,10 +1328,10 @@ namespace Durable.SqlServer
 
             token.ThrowIfCancellationRequested();
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM {_QualifiedTableName}");
+            StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM [{_TableName}]");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1665,10 +1382,10 @@ namespace Durable.SqlServer
 
             token.ThrowIfCancellationRequested();
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM {_QualifiedTableName}");
+            StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM [{_TableName}]");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1719,10 +1436,10 @@ namespace Durable.SqlServer
 
             token.ThrowIfCancellationRequested();
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM {_QualifiedTableName}");
+            StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM [{_TableName}]");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1799,7 +1516,7 @@ namespace Durable.SqlServer
                 PropertyInfo property = kvp.Value;
 
                 // Skip auto-increment primary keys
-                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
+                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
                 if (attr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true)
                     continue;
 
@@ -1808,10 +1525,10 @@ namespace Durable.SqlServer
                 parameters.Add(($"@{columnName}", _DataTypeConverter.ConvertToDatabase(value!, property.PropertyType, property)!));
             }
 
-            string insertSql = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.name))})";
+            string insertSql = $"INSERT INTO [{_TableName}] ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.name))})";
 
             // Check if we have an auto-increment primary key
-            PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
+            PropertyAttribute? pkAttr = _PrimaryKeyProperty.GetCustomAttribute<PropertyAttribute>();
             bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
 
             if (hasAutoIncrement)
@@ -1957,7 +1674,7 @@ namespace Durable.SqlServer
                 PropertyInfo property = kvp.Value;
 
                 // Skip auto-increment primary keys
-                PropertyAttribute? attr = _MetadataProvider.GetColumn(property);
+                PropertyAttribute? attr = property.GetCustomAttribute<PropertyAttribute>();
                 if (attr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true)
                     continue;
 
@@ -1966,10 +1683,10 @@ namespace Durable.SqlServer
                 parameters.Add(($"@{columnName}", _DataTypeConverter.ConvertToDatabase(value!, property.PropertyType, property)!));
             }
 
-            string insertSql = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.name))})";
+            string insertSql = $"INSERT INTO [{_TableName}] ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.name))})";
 
             // Check if we have an auto-increment primary key
-            PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
+            PropertyAttribute? pkAttr = _PrimaryKeyProperty.GetCustomAttribute<PropertyAttribute>();
             bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
 
             if (hasAutoIncrement)
@@ -2095,7 +1812,7 @@ namespace Durable.SqlServer
 
                 if (columnName == _PrimaryKeyColumn)
                 {
-                    idValue = ConvertPrimaryKeyValue(value);
+                    idValue = value;
                 }
                 else if (_VersionColumnInfo != null && columnName == _VersionColumnInfo.ColumnName)
                 {
@@ -2122,12 +1839,12 @@ namespace Durable.SqlServer
             string sql;
             if (_VersionColumnInfo != null)
             {
-                sql = $"UPDATE {_QualifiedTableName} SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @current_version";
+                sql = $"UPDATE [{_TableName}] SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @current_version";
                 parameters.Add(("@current_version", currentVersion));
             }
             else
             {
-                sql = $"UPDATE {_QualifiedTableName} SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id";
+                sql = $"UPDATE [{_TableName}] SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id";
             }
 
             int rowsAffected;
@@ -2262,7 +1979,7 @@ namespace Durable.SqlServer
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
             if (field == null) throw new ArgumentNullException(nameof(field));
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
@@ -2272,7 +1989,7 @@ namespace Durable.SqlServer
             string columnName = parser.GetColumnFromExpression(field.Body);
 
             // Build UPDATE SQL
-            string sql = $"UPDATE {_QualifiedTableName} SET {columnName} = @value WHERE {whereClause}";
+            string sql = $"UPDATE [{_TableName}] SET {columnName} = @value WHERE {whereClause}";
 
             // Convert value to database format
             PropertyInfo? fieldProperty = GetPropertyFromExpression(field.Body);
@@ -2331,7 +2048,7 @@ namespace Durable.SqlServer
 
                 if (columnName == _PrimaryKeyColumn)
                 {
-                    idValue = ConvertPrimaryKeyValue(value);
+                    idValue = value;
                 }
                 else if (_VersionColumnInfo != null && columnName == _VersionColumnInfo.ColumnName)
                 {
@@ -2358,12 +2075,12 @@ namespace Durable.SqlServer
             string sql;
             if (_VersionColumnInfo != null)
             {
-                sql = $"UPDATE {_QualifiedTableName} SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @current_version";
+                sql = $"UPDATE [{_TableName}] SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @current_version";
                 parameters.Add(("@current_version", currentVersion));
             }
             else
             {
-                sql = $"UPDATE {_QualifiedTableName} SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id";
+                sql = $"UPDATE [{_TableName}] SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id";
             }
 
             int rowsAffected;
@@ -2507,7 +2224,7 @@ namespace Durable.SqlServer
             if (field == null) throw new ArgumentNullException(nameof(field));
             token.ThrowIfCancellationRequested();
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
@@ -2517,7 +2234,7 @@ namespace Durable.SqlServer
             string columnName = parser.GetColumnFromExpression(field.Body);
 
             // Build UPDATE SQL
-            string sql = $"UPDATE {_QualifiedTableName} SET {columnName} = @value WHERE {whereClause}";
+            string sql = $"UPDATE [{_TableName}] SET {columnName} = @value WHERE {whereClause}";
 
             // Convert value to database format
             PropertyInfo? fieldProperty = GetPropertyFromExpression(field.Body);
@@ -2593,14 +2310,14 @@ namespace Durable.SqlServer
         {
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
             List<(string name, object? value)> parameters = parser.GetParameters();
 
             // Build DELETE SQL
-            string sql = $"DELETE FROM {_QualifiedTableName} WHERE {whereClause}";
+            string sql = $"DELETE FROM [{_TableName}] WHERE {whereClause}";
 
             int rowsAffected;
             if (transaction != null)
@@ -2680,14 +2397,14 @@ namespace Durable.SqlServer
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
             token.ThrowIfCancellationRequested();
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
             List<(string name, object? value)> parameters = parser.GetParameters();
 
             // Build DELETE SQL
-            string sql = $"DELETE FROM {_QualifiedTableName} WHERE {whereClause}";
+            string sql = $"DELETE FROM [{_TableName}] WHERE {whereClause}";
 
             int rowsAffected;
             if (transaction != null)
@@ -2724,14 +2441,14 @@ namespace Durable.SqlServer
         {
             if (entity == null) throw new ArgumentNullException(nameof(entity));
 
-            object? id = ConvertPrimaryKeyValue(_PrimaryKeyProperty.GetValue(entity));
+            object? id = _PrimaryKeyProperty.GetValue(entity);
             if (id == null) throw new InvalidOperationException("Cannot delete entity with null primary key");
 
             // If the entity has a version column, use optimistic concurrency control
             if (_VersionColumnInfo != null)
             {
                 object? version = _VersionColumnInfo.GetValue(entity);
-                string sql = $"DELETE FROM {_QualifiedTableName} WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @version";
+                string sql = $"DELETE FROM [{_TableName}] WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @version";
 
                 int rowsAffected;
                 if (transaction != null)
@@ -2787,10 +2504,9 @@ namespace Durable.SqlServer
         /// <exception cref="ArgumentNullException">Thrown when id is null.</exception>
         public bool DeleteById(object id, ITransaction? transaction = null)
         {
-            id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
 
-            string sql = $"DELETE FROM {_QualifiedTableName} WHERE [{_PrimaryKeyColumn}] = @id";
+            string sql = $"DELETE FROM [{_TableName}] WHERE [{_PrimaryKeyColumn}] = @id";
 
             if (transaction != null)
             {
@@ -2846,7 +2562,7 @@ namespace Durable.SqlServer
         /// <returns>The number of entities deleted.</returns>
         public int DeleteAll(ITransaction? transaction = null)
         {
-            string sql = $"DELETE FROM {_QualifiedTableName}";
+            string sql = $"DELETE FROM [{_TableName}]";
 
             if (transaction != null)
             {
@@ -2883,14 +2599,14 @@ namespace Durable.SqlServer
             if (entity == null) throw new ArgumentNullException(nameof(entity));
             token.ThrowIfCancellationRequested();
 
-            object? id = ConvertPrimaryKeyValue(_PrimaryKeyProperty.GetValue(entity));
+            object? id = _PrimaryKeyProperty.GetValue(entity);
             if (id == null) throw new InvalidOperationException("Cannot delete entity with null primary key");
 
             // If the entity has a version column, use optimistic concurrency control
             if (_VersionColumnInfo != null)
             {
                 object? version = _VersionColumnInfo.GetValue(entity);
-                string sql = $"DELETE FROM {_QualifiedTableName} WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @version";
+                string sql = $"DELETE FROM [{_TableName}] WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @version";
 
                 int rowsAffected;
                 if (transaction != null)
@@ -2948,11 +2664,10 @@ namespace Durable.SqlServer
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
         public async Task<bool> DeleteByIdAsync(object id, ITransaction? transaction = null, CancellationToken token = default)
         {
-            id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
             token.ThrowIfCancellationRequested();
 
-            string sql = $"DELETE FROM {_QualifiedTableName} WHERE [{_PrimaryKeyColumn}] = @id";
+            string sql = $"DELETE FROM [{_TableName}] WHERE [{_PrimaryKeyColumn}] = @id";
 
             int rowsAffected;
             if (transaction != null)
@@ -3024,7 +2739,7 @@ namespace Durable.SqlServer
         {
             token.ThrowIfCancellationRequested();
 
-            string sql = $"DELETE FROM {_QualifiedTableName}";
+            string sql = $"DELETE FROM [{_TableName}]";
 
             int rowsAffected;
             if (transaction != null)
@@ -3102,7 +2817,7 @@ namespace Durable.SqlServer
                 string columnName = kvp.Key;
                 PropertyInfo property = kvp.Value;
                 object? value = property.GetValue(entity);
-                PropertyAttribute? columnAttr = _MetadataProvider.GetColumn(property);
+                PropertyAttribute? columnAttr = property.GetCustomAttribute<PropertyAttribute>();
 
                 bool isAutoIncrementPK = columnAttr != null &&
                     (columnAttr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey &&
@@ -3130,7 +2845,7 @@ namespace Durable.SqlServer
 
             // Build MERGE statement for SQL Server
             StringBuilder sql = new StringBuilder();
-            sql.Append($"MERGE {_QualifiedTableName} AS target ");
+            sql.Append($"MERGE [{_TableName}] AS target ");
             sql.Append($"USING (VALUES ({string.Join(", ", allParameters)})) AS source ({string.Join(", ", allColumns)}) ");
             sql.Append($"ON target.[{_PrimaryKeyColumn}] = source.[{_PrimaryKeyColumn}] ");
             sql.Append("WHEN MATCHED THEN ");
@@ -3304,7 +3019,7 @@ namespace Durable.SqlServer
                 string columnName = kvp.Key;
                 PropertyInfo property = kvp.Value;
                 object? value = property.GetValue(entity);
-                PropertyAttribute? columnAttr = _MetadataProvider.GetColumn(property);
+                PropertyAttribute? columnAttr = property.GetCustomAttribute<PropertyAttribute>();
 
                 bool isAutoIncrementPK = columnAttr != null &&
                     (columnAttr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey &&
@@ -3332,7 +3047,7 @@ namespace Durable.SqlServer
 
             // Build MERGE statement for SQL Server
             StringBuilder sql = new StringBuilder();
-            sql.Append($"MERGE {_QualifiedTableName} AS target ");
+            sql.Append($"MERGE [{_TableName}] AS target ");
             sql.Append($"USING (VALUES ({string.Join(", ", allParameters)})) AS source ({string.Join(", ", allColumns)}) ");
             sql.Append($"ON target.[{_PrimaryKeyColumn}] = source.[{_PrimaryKeyColumn}] ");
             sql.Append("WHEN MATCHED THEN ");
@@ -4062,7 +3777,7 @@ namespace Durable.SqlServer
             {
                 string columnName = kvp.Key;
                 PropertyInfo property = kvp.Value;
-                PropertyAttribute? columnAttr = _MetadataProvider.GetColumn(property);
+                PropertyAttribute? columnAttr = property.GetCustomAttribute<PropertyAttribute>();
 
                 if (columnAttr != null &&
                     (columnAttr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey &&
@@ -4112,18 +3827,18 @@ namespace Durable.SqlServer
             }
 
             // Check if we need to output auto-generated IDs
-            PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
+            PropertyAttribute? pkAttr = _PrimaryKeyProperty?.GetCustomAttribute<PropertyAttribute>();
             bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
 
             if (hasAutoIncrement)
             {
                 string pkColumn = _PrimaryKeyProperty!.Name;
                 // Use OUTPUT clause to get all generated IDs
-                command.CommandText = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", sanitizedColumns)}) OUTPUT INSERTED.[{pkColumn}] VALUES {string.Join(", ", valuesList)}";
+                command.CommandText = $"INSERT INTO [{_TableName}] ({string.Join(", ", sanitizedColumns)}) OUTPUT INSERTED.[{pkColumn}] VALUES {string.Join(", ", valuesList)}";
             }
             else
             {
-                command.CommandText = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", sanitizedColumns)}) VALUES {string.Join(", ", valuesList)}";
+                command.CommandText = $"INSERT INTO [{_TableName}] ({string.Join(", ", sanitizedColumns)}) VALUES {string.Join(", ", valuesList)}";
             }
 
             AddParametersForBatch(command, entities);
@@ -4170,7 +3885,7 @@ namespace Durable.SqlServer
                 // If primary key is auto-increment, we need to use ExecuteReader to get the OUTPUT results
                 if (_PrimaryKeyProperty != null)
                 {
-                    PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
+                    PropertyAttribute? pkAttr = _PrimaryKeyProperty.GetCustomAttribute<PropertyAttribute>();
                     bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
 
                     if (hasAutoIncrement)
@@ -4232,7 +3947,7 @@ namespace Durable.SqlServer
                 // If primary key is auto-increment, we need to use ExecuteReader to get the OUTPUT results
                 if (_PrimaryKeyProperty != null)
                 {
-                    PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
+                    PropertyAttribute? pkAttr = _PrimaryKeyProperty.GetCustomAttribute<PropertyAttribute>();
                     bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
 
                     if (hasAutoIncrement)
@@ -4397,7 +4112,7 @@ namespace Durable.SqlServer
         /// <returns>The sanitized column name for the expression.</returns>
         internal string GetColumnFromExpression(Expression expression)
         {
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
             // The parser's GetColumnFromExpression already returns sanitized column names with backticks
             return parser.GetColumnFromExpression(expression);
         }
@@ -4467,7 +4182,7 @@ namespace Durable.SqlServer
             }
 
             // Get table name
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
             string tableName = entityAttr!.Name; // Already validated in ValidateTable
 
             // Check if table exists
@@ -4489,7 +4204,7 @@ namespace Durable.SqlServer
             if (!tableExists)
             {
                 // Create the table
-                SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
+                SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter);
                 string createTableSql = schemaBuilder.BuildCreateTableSql(entityType);
 
                 if (transaction != null)
@@ -4542,7 +4257,7 @@ namespace Durable.SqlServer
             }
 
             // Get table name
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
             string tableName = entityAttr!.Name; // Already validated in ValidateTable
 
             // Check if table exists
@@ -4564,7 +4279,7 @@ namespace Durable.SqlServer
             if (!tableExists)
             {
                 // Create the table
-                SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
+                SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter);
                 string createTableSql = schemaBuilder.BuildCreateTableSql(entityType);
 
                 if (transaction != null)
@@ -4706,7 +4421,7 @@ namespace Durable.SqlServer
             }
 
             // Check for Entity attribute
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
             if (entityAttr == null)
             {
                 errors.Add($"Type '{entityType.Name}' must have an [Entity] attribute");
@@ -4716,7 +4431,7 @@ namespace Durable.SqlServer
             // Check for at least one property with Property attribute
             PropertyInfo[] properties = entityType.GetProperties();
             List<PropertyInfo> mappedProperties = properties
-                .Where(p => _MetadataProvider.GetColumn(p) != null)
+                .Where(p => p.GetCustomAttribute<PropertyAttribute>() != null)
                 .ToList();
 
             if (mappedProperties.Count == 0)
@@ -4727,7 +4442,7 @@ namespace Durable.SqlServer
 
             // Check for primary key
             PropertyInfo? primaryKeyProperty = mappedProperties
-                .FirstOrDefault(p => _MetadataProvider.GetColumn(p)?.PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
+                .FirstOrDefault(p => p.GetCustomAttribute<PropertyAttribute>()?.PropertyFlags.HasFlag(Flags.PrimaryKey) == true);
 
             if (primaryKeyProperty == null)
             {
@@ -4738,11 +4453,11 @@ namespace Durable.SqlServer
             // Validate foreign keys
             foreach (PropertyInfo property in mappedProperties)
             {
-                ForeignKeyAttribute? fkAttr = _MetadataProvider.GetForeignKey(property);
+                ForeignKeyAttribute? fkAttr = property.GetCustomAttribute<ForeignKeyAttribute>();
                 if (fkAttr != null)
                 {
                     // Check that referenced type has Entity attribute
-                    EntityAttribute? refEntityAttr = _MetadataProvider.GetEntity(fkAttr.ReferencedType);
+                    EntityAttribute? refEntityAttr = fkAttr.ReferencedType.GetCustomAttribute<EntityAttribute>();
                     if (refEntityAttr == null)
                     {
                         errors.Add($"Foreign key on property '{property.Name}' references type '{fkAttr.ReferencedType.Name}' which does not have an [Entity] attribute");
@@ -4757,7 +4472,7 @@ namespace Durable.SqlServer
                     else
                     {
                         // Check that referenced property has Property attribute
-                        PropertyAttribute? refPropAttr = _MetadataProvider.GetColumn(refProperty);
+                        PropertyAttribute? refPropAttr = refProperty.GetCustomAttribute<PropertyAttribute>();
                         if (refPropAttr == null)
                         {
                             errors.Add($"Foreign key on property '{property.Name}' references property '{fkAttr.ReferencedProperty}' on type '{fkAttr.ReferencedType.Name}' which does not have a [Property] attribute");
@@ -4781,7 +4496,7 @@ namespace Durable.SqlServer
                     // Check if entity columns exist in database
                     foreach (PropertyInfo prop in mappedProperties)
                     {
-                        PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
+                        PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
                         if (propAttr != null)
                         {
                             if (!existingColumnNames.Contains(propAttr.Name, StringComparer.OrdinalIgnoreCase))
@@ -4797,7 +4512,7 @@ namespace Durable.SqlServer
                         bool foundInEntity = false;
                         foreach (PropertyInfo prop in mappedProperties)
                         {
-                            PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
+                            PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
                             if (propAttr != null && propAttr.Name.Equals(dbColumn.Name, StringComparison.OrdinalIgnoreCase))
                             {
                                 foundInEntity = true;
@@ -4947,7 +4662,7 @@ namespace Durable.SqlServer
         {
             ArgumentNullException.ThrowIfNull(entityType);
 
-            SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
+            SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter);
             List<string> indexSqlStatements = schemaBuilder.BuildCreateIndexSql(entityType);
 
             if (indexSqlStatements.Count == 0)
@@ -5000,7 +4715,7 @@ namespace Durable.SqlServer
             ArgumentNullException.ThrowIfNull(entityType);
             cancellationToken.ThrowIfCancellationRequested();
 
-            SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
+            SqlServerSchemaBuilder schemaBuilder = new SqlServerSchemaBuilder(_Sanitizer, _DataTypeConverter);
             List<string> indexSqlStatements = schemaBuilder.BuildCreateIndexSql(entityType);
 
             if (indexSqlStatements.Count == 0)
@@ -5057,7 +4772,7 @@ namespace Durable.SqlServer
             if (string.IsNullOrWhiteSpace(indexName))
                 throw new ArgumentException("Index name cannot be null or empty", nameof(indexName));
 
-            string sql = $"DROP INDEX IF EXISTS {_Sanitizer.SanitizeIdentifier(indexName)} ON {_QualifiedTableName}";
+            string sql = $"DROP INDEX IF EXISTS {_Sanitizer.SanitizeIdentifier(indexName)} ON {_Sanitizer.SanitizeIdentifier(_TableName)}";
 
             if (_CaptureSql)
             {
@@ -5098,7 +4813,7 @@ namespace Durable.SqlServer
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            string sql = $"DROP INDEX IF EXISTS {_Sanitizer.SanitizeIdentifier(indexName)} ON {_QualifiedTableName}";
+            string sql = $"DROP INDEX IF EXISTS {_Sanitizer.SanitizeIdentifier(indexName)} ON {_Sanitizer.SanitizeIdentifier(_TableName)}";
 
             if (_CaptureSql)
             {
@@ -5136,7 +4851,7 @@ namespace Durable.SqlServer
         {
             ArgumentNullException.ThrowIfNull(entityType);
 
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 
@@ -5157,7 +4872,7 @@ namespace Durable.SqlServer
             ArgumentNullException.ThrowIfNull(entityType);
             cancellationToken.ThrowIfCancellationRequested();
 
-            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
+            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 

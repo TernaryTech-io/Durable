@@ -1,29 +1,17 @@
 namespace Durable.Postgres
 {
     using System;
-    using System.Collections;
-    using System.Collections.Generic;
-    using System.Globalization;
-    using System.Reflection;
     using System.Text.Json;
     using Durable;
-    using Durable.Metadata;
 
     /// <summary>
-    /// PostgreSQL-specific data type converter that maintains type fidelity for PostgreSQL parameter binding.
-    /// Unlike the generic DataTypeConverter, this preserves DateTime objects as DateTime for proper PostgreSQL parameter binding.
+    /// PostgreSQL value conversion. Npgsql handles most types natively; this converter makes <see cref="DateTime"/> values
+    /// unspecified-kind (for <c>timestamp</c> columns) and <see cref="DateTimeOffset"/> values UTC (for <c>timestamptz</c>),
+    /// matching Npgsql 6+ rules, and widens unsigned integers to signed types PostgreSQL supports.
+    /// Thread safety: stateless; safe for concurrent use.
     /// </summary>
-    public class PostgresDataTypeConverter : IDataTypeConverter
+    public class PostgresDataTypeConverter : DataTypeConverter
     {
-
-        #region Public-Members
-
-        /// <summary>
-        /// Gets the metadata provider used to resolve property mapping hints.
-        /// </summary>
-        public IEntityMetadataProvider MetadataProvider { get; }
-
-        #endregion
 
         #region Private-Members
 
@@ -37,22 +25,12 @@ namespace Durable.Postgres
 
         #region Constructors-and-Factories
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="PostgresDataTypeConverter"/> class.
-        /// </summary>
-        /// <param name="metadataProvider">The metadata provider used to resolve property mapping hints. Defaults to <see cref="DurableConfiguration.DefaultMetadataProvider"/>.</param>
-        public PostgresDataTypeConverter(IEntityMetadataProvider? metadataProvider = null)
-        {
-            MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
-        }
-
         #endregion
 
         #region Public-Methods
 
         /// <summary>
-        /// Converts a .NET object to its PostgreSQL database parameter representation.
-        /// Preserves DateTime objects as DateTime for proper PostgreSQL parameter binding.
+        /// Instantiates the converter.
         /// </summary>
         /// <param name="value">The value to convert.</param>
         /// <param name="targetType">The target database type.</param>
@@ -110,7 +88,7 @@ namespace Durable.Postgres
                 // Check if property has Flags.String attribute
                 if (propertyInfo != null)
                 {
-                    PropertyAttribute? propAttr = MetadataProvider.GetColumn(propertyInfo);
+                    PropertyAttribute? propAttr = propertyInfo.GetCustomAttribute<PropertyAttribute>();
                     if (propAttr != null && propAttr.PropertyFlags.HasFlag(Flags.String))
                     {
                         // Store as string if property is marked with Flags.String
@@ -124,7 +102,7 @@ namespace Durable.Postgres
             if (valueType.IsEnum)
             {
                 // Check for PropertyAttribute flags to determine storage preference
-                PropertyAttribute? attr = MetadataProvider.GetColumn(propertyInfo);
+                PropertyAttribute? attr = propertyInfo?.GetCustomAttribute<PropertyAttribute>();
                 if (attr != null && (attr.PropertyFlags & Flags.String) != Flags.String)
                 {
                     // If String flag is NOT set, store as integer
@@ -132,12 +110,6 @@ namespace Durable.Postgres
                 }
                 // Default to string representation for readability
                 return value.ToString()!;
-            }
-
-            // Byte array handling - bind directly for PostgreSQL bytea type
-            if (valueType == typeof(byte[]))
-            {
-                return value;
             }
 
             // Array and Collection handling - serialize to JSON for PostgreSQL jsonb type
@@ -297,12 +269,6 @@ namespace Durable.Postgres
                 return Convert.ToBoolean(value);
             }
 
-            // Byte array handling - PostgreSQL returns bytea as byte[]
-            if (targetType == typeof(byte[]) && value is byte[])
-            {
-                return value;
-            }
-
             // Array and Collection handling - deserialize from JSON
             if (targetType.IsArray || (targetType.IsGenericType &&
                 (typeof(IEnumerable).IsAssignableFrom(targetType) && targetType != typeof(string))))
@@ -346,7 +312,7 @@ namespace Durable.Postgres
             type = Nullable.GetUnderlyingType(type) ?? type;
 
             // Check for PropertyAttribute
-            PropertyAttribute? attr = MetadataProvider.GetColumn(propertyInfo);
+            PropertyAttribute? attr = propertyInfo?.GetCustomAttribute<PropertyAttribute>();
 
             // PostgreSQL type mappings
             if (type == typeof(bool))
@@ -392,8 +358,6 @@ namespace Durable.Postgres
                     return "INTEGER";
                 return "TEXT";
             }
-            if (type == typeof(byte[]))
-                return "BYTEA";
             if (type.IsArray || (type.IsGenericType && typeof(IEnumerable).IsAssignableFrom(type)))
                 return "JSONB";
 

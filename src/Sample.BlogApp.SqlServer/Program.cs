@@ -335,7 +335,7 @@ namespace Sample.BlogApp.SqlServer
         {
             Console.WriteLine("=== Scenario 1: Creating Authors ===");
 
-            int existingCount = await authorRepo.CountAsync();
+            long existingCount = await authorRepo.CountAsync();
             if (existingCount > 0)
             {
                 Console.WriteLine($"Found {existingCount} existing authors, skipping creation.\n");
@@ -395,16 +395,22 @@ namespace Sample.BlogApp.SqlServer
         {
             Console.WriteLine("=== Scenario 2: Creating Blog Posts ===");
 
-            int existingCount = await postRepo.CountAsync();
+            long existingCount = await postRepo.CountAsync();
             if (existingCount > 0)
             {
                 Console.WriteLine($"Found {existingCount} existing posts, skipping creation.\n");
                 return;
             }
 
-            Author alice = (await authorRepo.ReadFirstAsync(a => a.Username == "alice_tech"))!;
-            Author bob = (await authorRepo.ReadFirstAsync(a => a.Username == "bob_data"))!;
-            Author carol = (await authorRepo.ReadFirstAsync(a => a.Username == "carol_dev"))!;
+            Author? alice = await authorRepo.ReadFirstAsync(a => a.Username == "alice_tech");
+            Author? bob = await authorRepo.ReadFirstAsync(a => a.Username == "bob_data");
+            Author? carol = await authorRepo.ReadFirstAsync(a => a.Username == "carol_dev");
+            if (alice == null || bob == null || carol == null)
+            {
+                Console.WriteLine("   Seed authors 'alice_tech', 'bob_data' and 'carol_dev' were not found; skipping the rest of this scenario.");
+                Console.WriteLine();
+                return;
+            }
 
             List<BlogPost> posts = new List<BlogPost>
             {
@@ -498,15 +504,21 @@ namespace Sample.BlogApp.SqlServer
         {
             Console.WriteLine("=== Scenario 3: Adding Comments ===");
 
-            int existingCount = await commentRepo.CountAsync();
+            long existingCount = await commentRepo.CountAsync();
             if (existingCount > 0)
             {
                 Console.WriteLine($"Found {existingCount} existing comments, skipping creation.\n");
                 return;
             }
 
-            BlogPost microservicesPost = (await postRepo.ReadFirstAsync(p => p.Slug == "intro-to-microservices"))!;
-            BlogPost mlPost = (await postRepo.ReadFirstAsync(p => p.Slug == "ml-basics-developers"))!;
+            BlogPost? microservicesPost = await postRepo.ReadFirstAsync(p => p.Slug == "intro-to-microservices");
+            BlogPost? mlPost = await postRepo.ReadFirstAsync(p => p.Slug == "ml-basics-developers");
+            if (microservicesPost == null || mlPost == null)
+            {
+                Console.WriteLine("   Seed posts 'intro-to-microservices' and 'ml-basics-developers' were not found; skipping the rest of this scenario.");
+                Console.WriteLine();
+                return;
+            }
 
             List<Comment> comments = new List<Comment>
             {
@@ -551,8 +563,8 @@ namespace Sample.BlogApp.SqlServer
             IEnumerable<Comment> createdComments = await commentRepo.CreateManyAsync(comments);
             Console.WriteLine($"✓ Created {createdComments.Count()} comments");
 
-            int approvedCount = await commentRepo.CountAsync(c => c.IsApproved == true);
-            int pendingCount = await commentRepo.CountAsync(c => c.IsApproved == false);
+            long approvedCount = await commentRepo.CountAsync(c => c.IsApproved == true);
+            long pendingCount = await commentRepo.CountAsync(c => c.IsApproved == false);
 
             Console.WriteLine($"  Approved: {approvedCount}, Pending: {pendingCount}");
             Console.WriteLine();
@@ -583,7 +595,14 @@ namespace Sample.BlogApp.SqlServer
             }
 
             Console.WriteLine("\n2. Find posts by a specific author:");
-            Author alice = (await authorRepo.ReadFirstAsync(a => a.Username == "alice_tech"))!;
+            Author? alice = await authorRepo.ReadFirstAsync(a => a.Username == "alice_tech");
+            if (alice == null)
+            {
+                Console.WriteLine("   Author 'alice_tech' was not found; skipping the rest of this scenario.");
+                Console.WriteLine();
+                return;
+            }
+
             IEnumerable<BlogPost> alicePosts = await postRepo.Query()
                 .Where(p => p.AuthorId == alice.Id)
                 .ExecuteAsync();
@@ -595,7 +614,14 @@ namespace Sample.BlogApp.SqlServer
             }
 
             Console.WriteLine("\n3. Find approved comments for a specific post:");
-            BlogPost microservicesPost = (await postRepo.ReadFirstAsync(p => p.Slug == "intro-to-microservices"))!;
+            BlogPost? microservicesPost = await postRepo.ReadFirstAsync(p => p.Slug == "intro-to-microservices");
+            if (microservicesPost == null)
+            {
+                Console.WriteLine("   Post 'intro-to-microservices' was not found; skipping the rest of this scenario.");
+                Console.WriteLine();
+                return;
+            }
+
             IEnumerable<Comment> approvedComments = await commentRepo.Query()
                 .Where(c => c.PostId == microservicesPost.Id && c.IsApproved == true)
                 .OrderBy(c => c.CreatedDate)
@@ -632,13 +658,27 @@ namespace Sample.BlogApp.SqlServer
             Console.WriteLine("=== Scenario 5: Update Operations ===");
 
             Console.WriteLine("\n1. Increment view count for a post:");
-            BlogPost microservicesPost = (await postRepo.ReadFirstAsync(p => p.Slug == "intro-to-microservices"))!;
+            BlogPost? microservicesPost = await postRepo.ReadFirstAsync(p => p.Slug == "intro-to-microservices");
+            if (microservicesPost == null)
+            {
+                Console.WriteLine("   Post 'intro-to-microservices' was not found; skipping the rest of this scenario.");
+                Console.WriteLine();
+                return;
+            }
+
             int originalViews = microservicesPost.ViewCount;
             microservicesPost.ViewCount += 10;
             microservicesPost.UpdatedDate = DateTime.UtcNow;
             await postRepo.UpdateAsync(microservicesPost);
 
-            BlogPost updatedPost = (await postRepo.ReadByIdAsync(microservicesPost.Id))!;
+            BlogPost? updatedPost = await postRepo.ReadByIdAsync(microservicesPost.Id);
+            if (updatedPost == null)
+            {
+                Console.WriteLine("   Updated post could not be re-read; skipping the rest of this scenario.");
+                Console.WriteLine();
+                return;
+            }
+
             Console.WriteLine($"   Views: {originalViews} → {updatedPost.ViewCount}");
 
             Console.WriteLine("\n2. Publish a draft post:");
@@ -676,14 +716,14 @@ namespace Sample.BlogApp.SqlServer
         {
             Console.WriteLine("=== Scenario 6: Aggregations ===");
 
-            int totalAuthors = await authorRepo.CountAsync();
-            int activeAuthors = await authorRepo.CountAsync(a => a.IsActive == true);
+            long totalAuthors = await authorRepo.CountAsync();
+            long activeAuthors = await authorRepo.CountAsync(a => a.IsActive == true);
 
-            int totalPosts = await postRepo.CountAsync();
-            int publishedPosts = await postRepo.CountAsync(p => p.IsPublished == true);
+            long totalPosts = await postRepo.CountAsync();
+            long publishedPosts = await postRepo.CountAsync(p => p.IsPublished == true);
 
-            int totalComments = await commentRepo.CountAsync();
-            int approvedComments = await commentRepo.CountAsync(c => c.IsApproved == true);
+            long totalComments = await commentRepo.CountAsync();
+            long approvedComments = await commentRepo.CountAsync(c => c.IsApproved == true);
 
             Console.WriteLine($"\n📊 Blog Statistics:");
             Console.WriteLine($"   Authors: {totalAuthors} ({activeAuthors} active)");
@@ -691,7 +731,13 @@ namespace Sample.BlogApp.SqlServer
             Console.WriteLine($"   Comments: {totalComments} ({approvedComments} approved)");
 
             int maxViews = await postRepo.MaxAsync(p => p.ViewCount);
-            BlogPost mostViewed = (await postRepo.ReadFirstAsync(p => p.ViewCount == maxViews))!;
+            BlogPost? mostViewed = await postRepo.ReadFirstAsync(p => p.ViewCount == maxViews);
+            if (mostViewed == null)
+            {
+                Console.WriteLine("   Most viewed post was not found; skipping the rest of this scenario.");
+                Console.WriteLine();
+                return;
+            }
 
             Console.WriteLine($"\n🔥 Most viewed post: '{mostViewed.Title}' with {mostViewed.ViewCount} views");
 
@@ -764,15 +810,16 @@ namespace Sample.BlogApp.SqlServer
             }
 
             Console.WriteLine("\n2. Testing rollback scenario (intentional error with invalid foreign key):");
-            int postCountBefore = await postRepo.CountAsync();
+            long postCountBefore = await postRepo.CountAsync();
 
             using (ITransaction transaction = await postRepo.BeginTransactionAsync())
             {
                 try
                 {
+                    int existingAuthorId = (await postRepo.ReadFirstAsync(null, transaction))?.AuthorId ?? 1;
                     BlogPost tempPost = new BlogPost
                     {
-                        AuthorId = 999,
+                        AuthorId = existingAuthorId,
                         Title = "This Post Will Be Rolled Back",
                         Slug = "rollback-test",
                         Content = "Temporary content",
@@ -796,7 +843,7 @@ namespace Sample.BlogApp.SqlServer
                 }
             }
 
-            int postCountAfter = await postRepo.CountAsync();
+            long postCountAfter = await postRepo.CountAsync();
             Console.WriteLine($"   ✓ Post count before: {postCountBefore}, after: {postCountAfter} (unchanged - rollback successful!)");
 
             Console.WriteLine();
@@ -931,20 +978,28 @@ namespace Sample.BlogApp.SqlServer
                 WHERE is_published = 1";
 
             int postCount = 0;
-            await using (System.Data.Common.DbConnection connection = new Microsoft.Data.SqlClient.SqlConnection(authorRepo.Settings.BuildConnectionString()))
+            RepositorySettings? settings = authorRepo.Settings;
+            if (settings == null)
             {
-                await connection.OpenAsync();
-                await using (System.Data.Common.DbCommand command = connection.CreateCommand())
+                Console.WriteLine("   Repository settings are unavailable; skipping raw SQL aggregation.");
+            }
+            else
+            {
+                await using (System.Data.Common.DbConnection connection = new Microsoft.Data.SqlClient.SqlConnection(settings.BuildConnectionString()))
                 {
-                    command.CommandText = aggregateSql;
-                    await using (System.Data.Common.DbDataReader reader = await command.ExecuteReaderAsync())
+                    await connection.OpenAsync();
+                    await using (System.Data.Common.DbCommand command = connection.CreateCommand())
                     {
-                        if (await reader.ReadAsync())
+                        command.CommandText = aggregateSql;
+                        await using (System.Data.Common.DbDataReader reader = await command.ExecuteReaderAsync())
                         {
-                            postCount = reader.GetInt32(0);
-                            double avgViews = reader.IsDBNull(1) ? 0 : reader.GetDouble(1);
-                            int maxViews = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
-                            Console.WriteLine($"   Published Posts: {postCount}, Avg Views: {avgViews:F1}, Max Views: {maxViews}");
+                            if (await reader.ReadAsync())
+                            {
+                                postCount = reader.GetInt32(0);
+                                double avgViews = reader.IsDBNull(1) ? 0 : reader.GetDouble(1);
+                                int maxViews = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
+                                Console.WriteLine($"   Published Posts: {postCount}, Avg Views: {avgViews:F1}, Max Views: {maxViews}");
+                            }
                         }
                     }
                 }
@@ -1012,7 +1067,7 @@ namespace Sample.BlogApp.SqlServer
             Console.WriteLine($"   Total streamed: {streamedCount} posts (memory efficient!)");
 
             Console.WriteLine("\n4. Calculate total pages:");
-            int totalPosts = await postRepo.CountAsync(p => p.IsPublished == true);
+            long totalPosts = await postRepo.CountAsync(p => p.IsPublished == true);
             int totalPages = (int)Math.Ceiling((double)totalPosts / pageSize);
             Console.WriteLine($"   Total posts: {totalPosts}, Page size: {pageSize}, Total pages: {totalPages}");
 
@@ -1082,7 +1137,7 @@ namespace Sample.BlogApp.SqlServer
             Console.WriteLine($"   DeleteById(99999) returned: {deleteResult}");
 
             Console.WriteLine("\n7. Count with always-false condition:");
-            int noneCount = await postRepo.CountAsync(p => p.Id < 0);
+            long noneCount = await postRepo.CountAsync(p => p.Id < 0);
             Console.WriteLine($"   Count with impossible condition: {noneCount}");
 
             Console.WriteLine("\n8. Exists with complex condition:");

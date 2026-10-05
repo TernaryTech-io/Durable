@@ -1,20 +1,23 @@
 namespace Durable.MySql
 {
     using System;
-    using System.Collections;
-    using System.Collections.Generic;
-    using System.Globalization;
-    using System.Reflection;
     using System.Text.Json;
     using Durable;
+<<<<<<< HEAD
     using Durable.Metadata;
+=======
+    using Durable.Sql;
+>>>>>>> origin/main
 
     /// <summary>
-    /// MySQL-specific data type converter that handles MySQL's unique type representations.
-    /// Provides special handling for TINYINT(1) booleans, JSON columns, unsigned integers, ENUM/SET types, and MySQL datetime types.
+    /// MySQL value conversion. MySqlConnector handles most types natively; <see cref="DateTimeOffset"/> values are stored
+    /// as UTC <c>DATETIME</c> values because MySQL has no offset-aware type, GUIDs are stored as 36-character strings,
+    /// and <see cref="TimeSpan"/> values are stored as BIGINT ticks so durations beyond MySQL's TIME range round-trip.
+    /// Thread safety: stateless; safe for concurrent use.
     /// </summary>
-    public class MySqlDataTypeConverter : IDataTypeConverter
+    public class MySqlDataTypeConverter : DataTypeConverter
     {
+<<<<<<< HEAD
 
         #region Metadata
 
@@ -50,16 +53,15 @@ namespace Durable.MySql
 
         #region Public-Methods
 
+=======
+>>>>>>> origin/main
         /// <summary>
-        /// Converts a .NET object to its MySQL database parameter representation.
-        /// Preserves native types where possible for proper MySQL parameter binding.
+        /// Instantiates the converter.
         /// </summary>
-        /// <param name="value">The value to convert.</param>
-        /// <param name="targetType">The target database type.</param>
-        /// <param name="propertyInfo">Optional property information for attribute-based conversion hints.</param>
-        /// <returns>The MySQL-compatible representation of the value.</returns>
-        public object ConvertToDatabase(object value, Type targetType, PropertyInfo? propertyInfo = null)
+        /// <param name="jsonOptions">JSON options for JSON columns; null uses the defaults.</param>
+        public MySqlDataTypeConverter(JsonSerializerOptions? jsonOptions = null) : base(jsonOptions)
         {
+<<<<<<< HEAD
             if (value == null)
                 return DBNull.Value;
 
@@ -154,20 +156,16 @@ namespace Durable.MySql
 
             // Default: return the value as-is for simple types
             return value;
+=======
+>>>>>>> origin/main
         }
 
-        /// <summary>
-        /// Converts a MySQL database value to its .NET type representation.
-        /// Handles MySQL-specific types including TINYINT(1) booleans, JSON columns, and unsigned integers.
-        /// </summary>
-        /// <param name="value">The database value to convert.</param>
-        /// <param name="targetType">The target .NET type.</param>
-        /// <param name="propertyInfo">Optional property information for attribute-based conversion hints.</param>
-        /// <returns>The .NET object representation of the database value.</returns>
-        public object? ConvertFromDatabase(object? value, Type targetType, PropertyInfo? propertyInfo = null)
+        /// <inheritdoc />
+        protected override object ToDatabaseCore(object value, Type type, ColumnMetadata? column)
         {
-            if (value == null || value == DBNull.Value)
+            switch (value)
             {
+<<<<<<< HEAD
                 if (targetType.IsValueType && Nullable.GetUnderlyingType(targetType) == null)
                 {
                     return Activator.CreateInstance(targetType)!;
@@ -556,9 +554,19 @@ namespace Durable.MySql
             catch
             {
                 return false;
+=======
+                case DateTimeOffset dateTimeOffset:
+                    return dateTimeOffset.UtcDateTime;
+                case TimeSpan timeSpan:
+                    return timeSpan.Ticks;
+                case Guid guid:
+                    return guid.ToString("D");
+                case char c:
+                    return c.ToString();
+                default:
+                    return value;
+>>>>>>> origin/main
             }
         }
-
-        #endregion
     }
 }
