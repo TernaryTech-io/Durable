@@ -385,54 +385,37 @@ namespace Durable.MySql
         /// <returns>A new transaction instance.</returns>
         public ITransaction BeginTransaction()
         {
-            MySqlConnection? connection = null;
-            try
-            {
-                connection = (MySqlConnection)PooledConnectionHandle.Unwrap(_ConnectionFactory.GetConnection());
-                EnsureConnectionOpen(connection);
-                MySqlTransaction transaction = connection.BeginTransaction();
-                MySqlRepositoryTransaction result = new MySqlRepositoryTransaction(connection, transaction, _ConnectionFactory);
-                connection = null; // Transaction now owns the connection
-                return result;
-            }
-            finally
-            {
-                if (connection != null)
-                {
-                    _ConnectionFactory.ReturnConnection(connection);
-                }
-            }
+            return _ConnectionFactory.BeginTransaction();
         }
+
 
         /// <summary>
         /// Asynchronously begins a new database transaction.
         /// </summary>
         /// <param name="token">A cancellation token to cancel the operation.</param>
         /// <returns>A task representing the asynchronous operation with a new transaction instance.</returns>
-        public async Task<ITransaction> BeginTransactionAsync(CancellationToken token = default)
+        public Task<ITransaction> BeginTransactionAsync(CancellationToken token = default)
         {
-            MySqlConnection? connection = null;
-            try
-            {
-                connection = (MySqlConnection)PooledConnectionHandle.Unwrap(await _ConnectionFactory.GetConnectionAsync(token).ConfigureAwait(false));
-                await EnsureConnectionOpenAsync(connection, token).ConfigureAwait(false);
-                MySqlTransaction transaction = await connection.BeginTransactionAsync(token).ConfigureAwait(false);
-                MySqlRepositoryTransaction result = new MySqlRepositoryTransaction(connection, transaction, _ConnectionFactory);
-                connection = null; // Transaction now owns the connection
-                return result;
-            }
-            finally
-            {
-                if (connection != null)
-                {
-                    await _ConnectionFactory.ReturnConnectionAsync(connection).ConfigureAwait(false);
-                }
-            }
+            return _ConnectionFactory.BeginTransactionAsync(token);
         }
 
         #endregion
 
         #region Private-Methods
+
+        /// <summary>
+        /// Converts a primary key value to its database representation using the data type converter,
+        /// so that custom key types bind correctly as parameters. Values that are not of the key
+        /// property's type (e.g. already converted) are returned unchanged.
+        /// </summary>
+        /// <param name="id">The primary key value.</param>
+        /// <returns>The converted value, or null when id is null.</returns>
+        private object? ConvertPrimaryKeyValue(object? id)
+        {
+            Type keyType = Nullable.GetUnderlyingType(_PrimaryKeyProperty.PropertyType) ?? _PrimaryKeyProperty.PropertyType;
+            if (id == null || !keyType.IsInstanceOfType(id)) return id;
+            return _DataTypeConverter.ConvertToDatabase(id, _PrimaryKeyProperty.PropertyType, _PrimaryKeyProperty);
+        }
 
         /// <summary>
         /// Ensures the connection is open in a thread-safe manner.

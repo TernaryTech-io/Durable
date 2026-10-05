@@ -1061,25 +1061,9 @@
         /// <exception cref="InvalidOperationException">Thrown when unable to create a database connection or transaction.</exception>
         public ITransaction BeginTransaction()
         {
-            SqliteConnection? connection = null;
-            try
-            {
-                DbConnection dbConn = GetConnection();
-                connection = dbConn is PooledConnectionHandle h ? h.GetInnerConnection<SqliteConnection>() : (SqliteConnection)dbConn;
-                connection.Open();
-                SqliteTransaction transaction = connection.BeginTransaction();
-                SqliteRepositoryTransaction result = new SqliteRepositoryTransaction(connection, transaction, _ConnectionFactory);
-                connection = null; // Transaction now owns the connection
-                return result;
-            }
-            finally
-            {
-                if (connection != null)
-                {
-                    _ConnectionFactory.ReturnConnection(connection);
-                }
-            }
+            return _ConnectionFactory.BeginTransaction();
         }
+
 
         /// <summary>
         /// Asynchronously begins a new database transaction for executing multiple operations atomically.
@@ -1089,26 +1073,9 @@
         /// <returns>A task representing the asynchronous operation that returns a transaction object.</returns>
         /// <exception cref="InvalidOperationException">Thrown when unable to create a database connection or transaction.</exception>
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled via the cancellation token.</exception>
-        public async Task<ITransaction> BeginTransactionAsync(CancellationToken token = default)
+        public Task<ITransaction> BeginTransactionAsync(CancellationToken token = default)
         {
-            SqliteConnection? connection = null;
-            try
-            {
-                DbConnection dbConn = GetConnection();
-                connection = dbConn is PooledConnectionHandle h ? h.GetInnerConnection<SqliteConnection>() : (SqliteConnection)dbConn;
-                await connection.OpenAsync(token).ConfigureAwait(false);
-                SqliteTransaction transaction = (SqliteTransaction)await connection.BeginTransactionAsync(token).ConfigureAwait(false);
-                SqliteRepositoryTransaction result = new SqliteRepositoryTransaction(connection, transaction, _ConnectionFactory);
-                connection = null; // Transaction now owns the connection
-                return result;
-            }
-            finally
-            {
-                if (connection != null)
-                {
-                    await _ConnectionFactory.ReturnConnectionAsync(connection).ConfigureAwait(false);
-                }
-            }
+            return _ConnectionFactory.BeginTransactionAsync(token);
         }
 
         // Existence checks
