@@ -1,12 +1,12 @@
-namespace Durable.Postgres
+namespace Durable.Helpers
 {
     using System.Collections.Generic;
     using System.Linq;
 
     /// <summary>
-    /// Helpers for composing SQL fragments.
+    /// Helpers for composing SQL conditions.
     /// </summary>
-    internal static class PostgresSqlFragments
+    public static class SqlConditions
     {
         /// <summary>
         /// Combines conditions with AND. When there is more than one condition each is wrapped in
@@ -14,7 +14,7 @@ namespace Durable.Postgres
         /// </summary>
         /// <param name="conditions">The conditions to combine.</param>
         /// <returns>The combined condition.</returns>
-        internal static string JoinConditions(IEnumerable<string> conditions)
+        public static string JoinAnd(IEnumerable<string> conditions)
         {
             List<string> list = conditions.ToList();
             if (list.Count == 1)

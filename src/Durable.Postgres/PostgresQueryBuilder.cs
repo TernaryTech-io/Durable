@@ -994,7 +994,7 @@ namespace Durable.Postgres
             // WHERE clause
             if (_WhereClauses.Count > 0)
             {
-                sqlParts.Add($"WHERE {PostgresSqlFragments.JoinConditions(_WhereClauses)}");
+                sqlParts.Add($"WHERE {Durable.Helpers.SqlConditions.JoinAnd(_WhereClauses)}");
             }
 
             // GROUP BY clause
@@ -1006,7 +1006,7 @@ namespace Durable.Postgres
             // HAVING clause
             if (_HavingClauses.Count > 0)
             {
-                sqlParts.Add($"HAVING {PostgresSqlFragments.JoinConditions(_HavingClauses)}");
+                sqlParts.Add($"HAVING {Durable.Helpers.SqlConditions.JoinAnd(_HavingClauses)}");
             }
 
             // ORDER BY clause
@@ -1442,7 +1442,7 @@ namespace Durable.Postgres
 
             if (_WhereClauses.Count > 0)
             {
-                sqlParts.Add($"WHERE {PostgresSqlFragments.JoinConditions(_WhereClauses)}");
+                sqlParts.Add($"WHERE {Durable.Helpers.SqlConditions.JoinAnd(_WhereClauses)}");
             }
 
             return string.Join(" ", sqlParts);
@@ -1458,7 +1458,7 @@ namespace Durable.Postgres
 
             if (_WhereClauses.Count > 0)
             {
-                sqlParts.Add($"WHERE {PostgresSqlFragments.JoinConditions(_WhereClauses)}");
+                sqlParts.Add($"WHERE {Durable.Helpers.SqlConditions.JoinAnd(_WhereClauses)}");
             }
 
             return string.Join(" ", sqlParts);
@@ -1473,7 +1473,7 @@ namespace Durable.Postgres
 
             if (_WhereClauses.Count > 0)
             {
-                sqlParts.Add($"WHERE {PostgresSqlFragments.JoinConditions(_WhereClauses)}");
+                sqlParts.Add($"WHERE {Durable.Helpers.SqlConditions.JoinAnd(_WhereClauses)}");
             }
 
             return string.Join(" ", sqlParts);

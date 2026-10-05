@@ -797,7 +797,7 @@ namespace Durable.Postgres
             if (whereClauses.Count > 0)
             {
                 sql.Append(" WHERE ");
-                sql.Append(PostgresSqlFragments.JoinConditions(whereClauses));
+                sql.Append(Durable.Helpers.SqlConditions.JoinAnd(whereClauses));
             }
 
             sql.Append(" GROUP BY ");
@@ -806,7 +806,7 @@ namespace Durable.Postgres
             if (_HavingClauses.Count > 0)
             {
                 sql.Append(" HAVING ");
-                sql.Append(PostgresSqlFragments.JoinConditions(_HavingClauses));
+                sql.Append(Durable.Helpers.SqlConditions.JoinAnd(_HavingClauses));
             }
 
             return sql.ToString();
@@ -840,7 +840,7 @@ namespace Durable.Postgres
             if (whereClauses.Count > 0)
             {
                 sql.Append(" WHERE ");
-                sql.Append(PostgresSqlFragments.JoinConditions(whereClauses));
+                sql.Append(Durable.Helpers.SqlConditions.JoinAnd(whereClauses));
             }
 
             return sql.ToString();

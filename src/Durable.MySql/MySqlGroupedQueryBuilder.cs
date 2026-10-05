@@ -797,7 +797,7 @@ namespace Durable.MySql
             if (whereClauses.Count > 0)
             {
                 sql.Append(" WHERE ");
-                sql.Append(string.Join(" AND ", whereClauses));
+                sql.Append(Durable.Helpers.SqlConditions.JoinAnd(whereClauses));
             }
 
             sql.Append(" GROUP BY ");
@@ -806,7 +806,7 @@ namespace Durable.MySql
             if (_HavingClauses.Count > 0)
             {
                 sql.Append(" HAVING ");
-                sql.Append(string.Join(" AND ", _HavingClauses));
+                sql.Append(Durable.Helpers.SqlConditions.JoinAnd(_HavingClauses));
             }
 
             return sql.ToString();
@@ -840,7 +840,7 @@ namespace Durable.MySql
             if (whereClauses.Count > 0)
             {
                 sql.Append(" WHERE ");
-                sql.Append(string.Join(" AND ", whereClauses));
+                sql.Append(Durable.Helpers.SqlConditions.JoinAnd(whereClauses));
             }
 
             return sql.ToString();

@@ -343,7 +343,7 @@ namespace Durable.SqlServer
             // WHERE clause
             if (_WhereClauses.Any())
             {
-                sqlParts.Add($"WHERE {string.Join(" AND ", _WhereClauses)}");
+                sqlParts.Add($"WHERE {Durable.Helpers.SqlConditions.JoinAnd(_WhereClauses)}");
             }
 
             // GROUP BY clause
@@ -355,7 +355,7 @@ namespace Durable.SqlServer
             // HAVING clause
             if (_HavingClauses.Any())
             {
-                sqlParts.Add($"HAVING {string.Join(" AND ", _HavingClauses)}");
+                sqlParts.Add($"HAVING {Durable.Helpers.SqlConditions.JoinAnd(_HavingClauses)}");
             }
 
             // ORDER BY clause
@@ -1623,7 +1623,7 @@ namespace Durable.SqlServer
 
             if (_WhereClauses.Any())
             {
-                sqlParts.Add($"WHERE {string.Join(" AND ", _WhereClauses)}");
+                sqlParts.Add($"WHERE {Durable.Helpers.SqlConditions.JoinAnd(_WhereClauses)}");
             }
 
             return string.Join(" ", sqlParts);
@@ -1638,7 +1638,7 @@ namespace Durable.SqlServer
 
             if (_WhereClauses.Any())
             {
-                sqlParts.Add($"WHERE {string.Join(" AND ", _WhereClauses)}");
+                sqlParts.Add($"WHERE {Durable.Helpers.SqlConditions.JoinAnd(_WhereClauses)}");
             }
 
             return string.Join(" ", sqlParts);
@@ -1652,7 +1652,7 @@ namespace Durable.SqlServer
 
             if (_WhereClauses.Any())
             {
-                sqlParts.Add($"WHERE {string.Join(" AND ", _WhereClauses)}");
+                sqlParts.Add($"WHERE {Durable.Helpers.SqlConditions.JoinAnd(_WhereClauses)}");
             }
 
             return string.Join(" ", sqlParts);

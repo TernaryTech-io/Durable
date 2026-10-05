@@ -889,7 +889,7 @@
                 sql.Append(" WHERE ");
                 List<string> updatedWhereClauses = _WhereClauses.Select(w => 
                     UpdateWhereClauseWithAlias(w, "t0")).ToList();
-                sql.Append(string.Join(" AND ", updatedWhereClauses));
+                sql.Append(Durable.Helpers.SqlConditions.JoinAnd(updatedWhereClauses));
             }
 
             // GROUP BY clause
@@ -904,7 +904,7 @@
             if (_HavingClauses.Count > 0)
             {
                 sql.Append(" HAVING ");
-                sql.Append(string.Join(" AND ", _HavingClauses));
+                sql.Append(Durable.Helpers.SqlConditions.JoinAnd(_HavingClauses));
             }
 
             // ORDER BY clause
@@ -1421,7 +1421,7 @@
 
             if (_WhereClauses.Any())
             {
-                sqlParts.Add($"WHERE {string.Join(" AND ", _WhereClauses)}");
+                sqlParts.Add($"WHERE {Durable.Helpers.SqlConditions.JoinAnd(_WhereClauses)}");
             }
 
             return string.Join(" ", sqlParts);
@@ -1436,7 +1436,7 @@
 
             if (_WhereClauses.Any())
             {
-                sqlParts.Add($"WHERE {string.Join(" AND ", _WhereClauses)}");
+                sqlParts.Add($"WHERE {Durable.Helpers.SqlConditions.JoinAnd(_WhereClauses)}");
             }
 
             return string.Join(" ", sqlParts);
@@ -1450,7 +1450,7 @@
 
             if (_WhereClauses.Any())
             {
-                sqlParts.Add($"WHERE {string.Join(" AND ", _WhereClauses)}");
+                sqlParts.Add($"WHERE {Durable.Helpers.SqlConditions.JoinAnd(_WhereClauses)}");
             }
 
             return string.Join(" ", sqlParts);

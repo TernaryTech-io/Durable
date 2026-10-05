@@ -907,7 +907,7 @@ namespace Durable.MySql
             if (_WhereClauses.Count > 0)
             {
                 sql.Append(" WHERE ");
-                sql.Append(string.Join(" AND ", _WhereClauses));
+                sql.Append(Durable.Helpers.SqlConditions.JoinAnd(_WhereClauses));
             }
 
             // GROUP BY clause

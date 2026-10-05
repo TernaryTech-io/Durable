@@ -418,7 +418,7 @@
             if (whereClauses.Count > 0)
             {
                 sql.Append(" WHERE ");
-                sql.Append(string.Join(" AND ", whereClauses));
+                sql.Append(Durable.Helpers.SqlConditions.JoinAnd(whereClauses));
             }
             
             sql.Append(" GROUP BY ");
@@ -427,7 +427,7 @@
             if (_HavingClauses.Count > 0)
             {
                 sql.Append(" HAVING ");
-                sql.Append(string.Join(" AND ", _HavingClauses));
+                sql.Append(Durable.Helpers.SqlConditions.JoinAnd(_HavingClauses));
             }
             
             sql.Append(";");
@@ -460,7 +460,7 @@
             if (whereClauses.Count > 0)
             {
                 sql.Append(" WHERE ");
-                sql.Append(string.Join(" AND ", whereClauses));
+                sql.Append(Durable.Helpers.SqlConditions.JoinAnd(whereClauses));
             }
             
             if (groupByColumns.Count > 0)
@@ -472,7 +472,7 @@
             if (_HavingClauses.Count > 0)
             {
                 sql.Append(" HAVING ");
-                sql.Append(string.Join(" AND ", _HavingClauses));
+                sql.Append(Durable.Helpers.SqlConditions.JoinAnd(_HavingClauses));
             }
             
             sql.Append(";");
@@ -623,7 +623,7 @@
             if (whereClauses.Count > 0)
             {
                 sql.Append(" WHERE ");
-                sql.Append(string.Join(" AND ", whereClauses));
+                sql.Append(Durable.Helpers.SqlConditions.JoinAnd(whereClauses));
             }
             
             // Note: No GROUP BY or HAVING for aggregate methods
