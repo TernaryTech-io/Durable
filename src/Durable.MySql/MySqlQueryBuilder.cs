@@ -83,7 +83,7 @@ namespace Durable.MySql
         {
             _Repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _Transaction = transaction;
-            _ExpressionParser = new MySqlExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer);
+            _ExpressionParser = new MySqlExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider, _Repository._DataTypeConverter);
             _JoinBuilder = new MySqlJoinBuilder(_Repository._Sanitizer, _Repository._MetadataProvider);
             _EntityMapper = new MySqlEntityMapper<TEntity>(_Repository._DataTypeConverter, _Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider);
         }

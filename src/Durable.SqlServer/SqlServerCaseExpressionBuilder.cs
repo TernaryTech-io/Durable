@@ -127,7 +127,7 @@ namespace Durable.SqlServer
             SqlServerExpressionParser<TEntity> parser = new SqlServerExpressionParser<TEntity>(
                 _Repository._ColumnMappings,
                 _Repository._Sanitizer
-            );
+            , _Repository._MetadataProvider, _Repository._DataTypeConverter);
 
             // Parse the expression without parameters (embedded values for CASE expressions)
             return parser.ParseExpression(expression.Body);

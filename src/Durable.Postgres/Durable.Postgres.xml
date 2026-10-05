@@ -3498,19 +3498,6 @@
             </summary>
             <returns>A string describing the mapping</returns>
         </member>
-        <member name="T:Durable.Postgres.PostgresSqlFragments">
-            <summary>
-            Helpers for composing SQL fragments.
-            </summary>
-        </member>
-        <member name="M:Durable.Postgres.PostgresSqlFragments.JoinConditions(System.Collections.Generic.IEnumerable{System.String})">
-            <summary>
-            Combines conditions with AND. When there is more than one condition each is wrapped in
-            parentheses, so a condition containing OR cannot bind across its neighbours.
-            </summary>
-            <param name="conditions">The conditions to combine.</param>
-            <returns>The combined condition.</returns>
-        </member>
         <member name="T:Durable.Postgres.PostgresStringExtensions">
             <summary>
             Extension methods for string to provide PostgreSQL connection factory creation.

@@ -834,7 +834,7 @@ namespace Durable.SqlServer
             // parse them into SQL using the expression parser
             try
             {
-                SqlServerExpressionParser<TEntity> parser = new SqlServerExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer);
+                SqlServerExpressionParser<TEntity> parser = new SqlServerExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider, _Repository._DataTypeConverter);
                 string result = parser.ParseExpression(expression);
 
                 // If the expression is a boolean (comparison or logical) being used as a value,

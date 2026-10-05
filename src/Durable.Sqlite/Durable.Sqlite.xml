@@ -118,13 +118,14 @@
             </summary>
             <typeparam name="T">The entity type that the expressions operate on.</typeparam>
         </member>
-        <member name="M:Durable.Sqlite.ExpressionParser`1.#ctor(System.Collections.Generic.Dictionary{System.String,System.Reflection.PropertyInfo},Durable.ISanitizer,Durable.Metadata.IEntityMetadataProvider)">
+        <member name="M:Durable.Sqlite.ExpressionParser`1.#ctor(System.Collections.Generic.Dictionary{System.String,System.Reflection.PropertyInfo},Durable.ISanitizer,Durable.Metadata.IEntityMetadataProvider,Durable.IDataTypeConverter)">
             <summary>
             Initializes a new instance of the ExpressionParser with the specified column mappings and sanitizer.
             </summary>
             <param name="columnMappings">A dictionary mapping property names to their corresponding database column names and PropertyInfo objects.</param>
             <param name="sanitizer">The sanitizer to use for value formatting and SQL injection prevention. Defaults to SqliteSanitizer if null.</param>
             <param name="metadataProvider">The entity metadata provider. Uses <see cref="P:Durable.DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
+            <param name="dataTypeConverter">Optional data type converter applied to constant values the sanitizer cannot format natively (e.g. custom key types). When null, such values are formatted as before.</param>
             <exception cref="T:System.ArgumentNullException">Thrown when columnMappings is null.</exception>
         </member>
         <member name="M:Durable.Sqlite.ExpressionParser`1.ParseExpression(System.Linq.Expressions.Expression)">
@@ -2155,6 +2156,15 @@
             After disposal, the repository instance should not be used for any operations.
             </summary>
         </member>
+        <member name="M:Durable.Sqlite.SqliteRepository`1.ConvertPrimaryKeyValue(System.Object)">
+            <summary>
+            Converts a primary key value to its database representation using the data type converter,
+            so that custom key types bind correctly as parameters. Values that are not of the key
+            property's type (e.g. already converted) are returned unchanged.
+            </summary>
+            <param name="id">The primary key value.</param>
+            <returns>The converted value, or null when id is null.</returns>
+        </member>
         <member name="M:Durable.Sqlite.SqliteRepository`1.GetConnection">
             <summary>
             Gets a connection to the SQLite database from the connection factory.
@@ -2431,6 +2441,32 @@
             <summary>
             Represents index information from the database
             </summary>
+        </member>
+        <member name="T:Durable.Sqlite.SqliteTransactionExtensions">
+            <summary>
+            Begins SQLite transactions directly from a connection factory. Because every repository
+            accepts an <see cref="T:Durable.ITransaction"/>, a transaction started here can be shared by
+            repositories of different entity types that use the same factory (a unit of work).
+            </summary>
+        </member>
+        <member name="M:Durable.Sqlite.SqliteTransactionExtensions.BeginTransaction(Durable.IConnectionFactory)">
+            <summary>
+            Begins a new database transaction on a connection from the factory.
+            The transaction owns the connection and returns it to the factory when disposed.
+            </summary>
+            <param name="connectionFactory">The SQLite connection factory.</param>
+            <returns>A new transaction instance.</returns>
+            <exception cref="T:System.ArgumentNullException">Thrown when connectionFactory is null.</exception>
+        </member>
+        <member name="M:Durable.Sqlite.SqliteTransactionExtensions.BeginTransactionAsync(Durable.IConnectionFactory,System.Threading.CancellationToken)">
+            <summary>
+            Asynchronously begins a new database transaction on a connection from the factory.
+            The transaction owns the connection and returns it to the factory when disposed.
+            </summary>
+            <param name="connectionFactory">The SQLite connection factory.</param>
+            <param name="token">A cancellation token to cancel the operation.</param>
+            <returns>A task representing the asynchronous operation with a new transaction instance.</returns>
+            <exception cref="T:System.ArgumentNullException">Thrown when connectionFactory is null.</exception>
         </member>
         <member name="T:Durable.Sqlite.SqliteWindowedQueryBuilder`1">
             <summary>

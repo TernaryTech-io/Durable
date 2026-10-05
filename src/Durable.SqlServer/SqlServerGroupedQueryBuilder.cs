@@ -832,7 +832,7 @@ namespace Durable.SqlServer
             List<string> whereClauses = _QueryBuilder.GetWhereClauses();
             if (predicate != null)
             {
-                SqlServerExpressionParser<TEntity> parser = new SqlServerExpressionParser<TEntity>(_Repository._ColumnMappings, _Sanitizer);
+                SqlServerExpressionParser<TEntity> parser = new SqlServerExpressionParser<TEntity>(_Repository._ColumnMappings, _Sanitizer, _Repository._MetadataProvider, _Repository._DataTypeConverter);
                 string predicateClause = parser.ParseExpression(predicate.Body);
                 whereClauses.Add(predicateClause);
             }

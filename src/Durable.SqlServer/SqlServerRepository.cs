@@ -328,6 +328,7 @@ namespace Durable.SqlServer
         /// <returns>The entity with the specified identifier.</returns>
         public T? ReadById(object id, ITransaction? transaction = null)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
             return Query(transaction).Where(BuildIdPredicate(id)).Execute().FirstOrDefault();
         }
@@ -1168,6 +1169,7 @@ namespace Durable.SqlServer
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
         public async Task<T?> ReadByIdAsync(object id, ITransaction? transaction = null, CancellationToken token = default)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             if (id == null)
                 throw new ArgumentNullException(nameof(id));
 
@@ -1197,6 +1199,7 @@ namespace Durable.SqlServer
         /// <exception cref="ArgumentNullException">Thrown when id is null.</exception>
         public bool ExistsById(object id, ITransaction? transaction = null)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
             return Query(transaction).Where(BuildIdPredicate(id)).Take(1).Execute().Any();
         }
@@ -1232,6 +1235,7 @@ namespace Durable.SqlServer
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
         public async Task<bool> ExistsByIdAsync(object id, ITransaction? transaction = null, CancellationToken token = default)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             if (id == null)
                 throw new ArgumentNullException(nameof(id));
 
@@ -1254,7 +1258,7 @@ namespace Durable.SqlServer
 
             if (predicate != null)
             {
-                SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+                SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
                 string whereClause = parser.ParseExpressionWithParameters(predicate.Body);
                 sql += $" WHERE {whereClause}";
                 parameters.AddRange(parser.GetParameters());
@@ -1300,7 +1304,7 @@ namespace Durable.SqlServer
 
             if (predicate != null)
             {
-                SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+                SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
                 string whereClause = parser.ParseExpressionWithParameters(predicate.Body);
                 sql += $" WHERE {whereClause}";
                 parameters.AddRange(parser.GetParameters());
@@ -1341,7 +1345,7 @@ namespace Durable.SqlServer
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM [{_TableName}]");
@@ -1392,7 +1396,7 @@ namespace Durable.SqlServer
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM [{_TableName}]");
@@ -1442,7 +1446,7 @@ namespace Durable.SqlServer
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             // SQL Server doesn't need explicit casting like SQLite, AVG function works with numeric types
@@ -1493,7 +1497,7 @@ namespace Durable.SqlServer
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM [{_TableName}]");
@@ -1548,7 +1552,7 @@ namespace Durable.SqlServer
 
             token.ThrowIfCancellationRequested();
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM [{_TableName}]");
@@ -1603,7 +1607,7 @@ namespace Durable.SqlServer
 
             token.ThrowIfCancellationRequested();
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM [{_TableName}]");
@@ -1657,7 +1661,7 @@ namespace Durable.SqlServer
 
             token.ThrowIfCancellationRequested();
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM [{_TableName}]");
@@ -1711,7 +1715,7 @@ namespace Durable.SqlServer
 
             token.ThrowIfCancellationRequested();
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM [{_TableName}]");
@@ -2087,7 +2091,7 @@ namespace Durable.SqlServer
 
                 if (columnName == _PrimaryKeyColumn)
                 {
-                    idValue = value;
+                    idValue = ConvertPrimaryKeyValue(value);
                 }
                 else if (_VersionColumnInfo != null && columnName == _VersionColumnInfo.ColumnName)
                 {
@@ -2254,7 +2258,7 @@ namespace Durable.SqlServer
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
             if (field == null) throw new ArgumentNullException(nameof(field));
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
@@ -2323,7 +2327,7 @@ namespace Durable.SqlServer
 
                 if (columnName == _PrimaryKeyColumn)
                 {
-                    idValue = value;
+                    idValue = ConvertPrimaryKeyValue(value);
                 }
                 else if (_VersionColumnInfo != null && columnName == _VersionColumnInfo.ColumnName)
                 {
@@ -2499,7 +2503,7 @@ namespace Durable.SqlServer
             if (field == null) throw new ArgumentNullException(nameof(field));
             token.ThrowIfCancellationRequested();
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
@@ -2585,7 +2589,7 @@ namespace Durable.SqlServer
         {
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
@@ -2672,7 +2676,7 @@ namespace Durable.SqlServer
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
             token.ThrowIfCancellationRequested();
 
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
@@ -2716,7 +2720,7 @@ namespace Durable.SqlServer
         {
             if (entity == null) throw new ArgumentNullException(nameof(entity));
 
-            object? id = _PrimaryKeyProperty.GetValue(entity);
+            object? id = ConvertPrimaryKeyValue(_PrimaryKeyProperty.GetValue(entity));
             if (id == null) throw new InvalidOperationException("Cannot delete entity with null primary key");
 
             // If the entity has a version column, use optimistic concurrency control
@@ -2779,6 +2783,7 @@ namespace Durable.SqlServer
         /// <exception cref="ArgumentNullException">Thrown when id is null.</exception>
         public bool DeleteById(object id, ITransaction? transaction = null)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
 
             string sql = $"DELETE FROM [{_TableName}] WHERE [{_PrimaryKeyColumn}] = @id";
@@ -2874,7 +2879,7 @@ namespace Durable.SqlServer
             if (entity == null) throw new ArgumentNullException(nameof(entity));
             token.ThrowIfCancellationRequested();
 
-            object? id = _PrimaryKeyProperty.GetValue(entity);
+            object? id = ConvertPrimaryKeyValue(_PrimaryKeyProperty.GetValue(entity));
             if (id == null) throw new InvalidOperationException("Cannot delete entity with null primary key");
 
             // If the entity has a version column, use optimistic concurrency control
@@ -2939,6 +2944,7 @@ namespace Durable.SqlServer
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
         public async Task<bool> DeleteByIdAsync(object id, ITransaction? transaction = null, CancellationToken token = default)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
             token.ThrowIfCancellationRequested();
 
@@ -4387,7 +4393,7 @@ namespace Durable.SqlServer
         /// <returns>The sanitized column name for the expression.</returns>
         internal string GetColumnFromExpression(Expression expression)
         {
-            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             // The parser's GetColumnFromExpression already returns sanitized column names with backticks
             return parser.GetColumnFromExpression(expression);
         }

@@ -397,6 +397,7 @@
         /// <exception cref="ArgumentNullException">Thrown when id is null.</exception>
         public T ReadById(object id, ITransaction transaction = null)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             ConnectionCommandResult<SqliteConnection, SqliteCommand> result = GetConnectionAndCommand(transaction);
             SqliteConnection connection = result.Connection;
             SqliteCommand command = result.Command;
@@ -432,6 +433,7 @@
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled via the cancellation token.</exception>
         public async Task<T> ReadByIdAsync(object id, ITransaction transaction = null, CancellationToken token = default)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             ConnectionCommandResult<SqliteConnection, SqliteCommand> result = await GetConnectionAndCommandAsync(transaction, token);
             SqliteConnection connection = result.Connection;
             SqliteCommand command = result.Command;
@@ -777,7 +779,7 @@
             bool shouldDispose = result.ShouldReturnToPool;
             try
             {
-                ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer);
+                ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
                 string whereClause = BuildWhereClause(predicate);
                 string setPairs = parser.ParseUpdateExpression(updateExpression);
 
@@ -807,7 +809,7 @@
             bool shouldDispose = result.ShouldReturnToPool;
             try
             {
-                ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer);
+                ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
                 string whereClause = BuildWhereClause(predicate);
                 string setPairs = parser.ParseUpdateExpression(updateExpression);
 
@@ -1139,6 +1141,7 @@
         /// <returns>True if an entity with the specified primary key exists; otherwise, false.</returns>
         public bool ExistsById(object id, ITransaction transaction = null)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             ConnectionCommandResult<SqliteConnection, SqliteCommand> result = GetConnectionAndCommand(transaction);
             SqliteConnection connection = result.Connection;
             SqliteCommand command = result.Command;
@@ -1165,6 +1168,7 @@
         /// <returns>A task that represents the asynchronous operation containing true if an entity with the specified primary key exists; otherwise, false.</returns>
         public async Task<bool> ExistsByIdAsync(object id, ITransaction transaction = null, CancellationToken token = default)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             ConnectionCommandResult<SqliteConnection, SqliteCommand> result = await GetConnectionAndCommandAsync(transaction, token);
             SqliteConnection connection = result.Connection;
             SqliteCommand command = result.Command;
@@ -1585,7 +1589,7 @@
 
                     if (columnName == _PrimaryKeyColumn)
                     {
-                        idValue = value;
+                        idValue = ConvertPrimaryKeyValue(value);
                     }
                     else if (_VersionColumnInfo != null && columnName == _VersionColumnInfo.ColumnName)
                     {
@@ -1694,7 +1698,7 @@
 
                     if (columnName == _PrimaryKeyColumn)
                     {
-                        idValue = value;
+                        idValue = ConvertPrimaryKeyValue(value);
                     }
                     else if (_VersionColumnInfo != null && columnName == _VersionColumnInfo.ColumnName)
                     {
@@ -1976,7 +1980,7 @@
         /// <exception cref="ArgumentNullException">Thrown when entity is null.</exception>
         public bool Delete(T entity, ITransaction transaction = null)
         {
-            object idValue = GetPrimaryKeyValue(entity);
+            object idValue = ConvertPrimaryKeyValue(GetPrimaryKeyValue(entity));
             return DeleteById(idValue, transaction);
         }
 
@@ -1989,7 +1993,7 @@
         /// <returns>A task that represents the asynchronous operation containing true if the entity was deleted; otherwise, false.</returns>
         public async Task<bool> DeleteAsync(T entity, ITransaction transaction = null, CancellationToken token = default)
         {
-            object idValue = GetPrimaryKeyValue(entity);
+            object idValue = ConvertPrimaryKeyValue(GetPrimaryKeyValue(entity));
             return await DeleteByIdAsync(idValue, transaction, token);
         }
 
@@ -2001,6 +2005,7 @@
         /// <returns>True if the entity was deleted; otherwise, false.</returns>
         public bool DeleteById(object id, ITransaction transaction = null)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             ConnectionCommandResult<SqliteConnection, SqliteCommand> result = GetConnectionAndCommand(transaction);
             SqliteConnection connection = result.Connection;
             SqliteCommand command = result.Command;
@@ -2028,6 +2033,7 @@
         /// <returns>A task that represents the asynchronous operation containing true if the entity was deleted; otherwise, false.</returns>
         public async Task<bool> DeleteByIdAsync(object id, ITransaction transaction = null, CancellationToken token = default)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             ConnectionCommandResult<SqliteConnection, SqliteCommand> result = await GetConnectionAndCommandAsync(transaction, token);
             SqliteConnection connection = result.Connection;
             SqliteCommand command = result.Command;
@@ -2419,6 +2425,20 @@
         #endregion
 
         #region Private-Methods
+
+        /// <summary>
+        /// Converts a primary key value to its database representation using the data type converter,
+        /// so that custom key types bind correctly as parameters. Values that are not of the key
+        /// property's type (e.g. already converted) are returned unchanged.
+        /// </summary>
+        /// <param name="id">The primary key value.</param>
+        /// <returns>The converted value, or null when id is null.</returns>
+        private object ConvertPrimaryKeyValue(object id)
+        {
+            Type keyType = Nullable.GetUnderlyingType(_PrimaryKeyProperty.PropertyType) ?? _PrimaryKeyProperty.PropertyType;
+            if (id == null || !keyType.IsInstanceOfType(id)) return id;
+            return _DataTypeConverter.ConvertToDatabase(id, _PrimaryKeyProperty.PropertyType, _PrimaryKeyProperty);
+        }
         
         private T CreateCopyOfEntity(T entity)
         {
@@ -2842,13 +2862,13 @@
 
         internal string BuildWhereClause(Expression<Func<T, bool>> predicate)
         {
-            ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             return parser.ParseExpression(predicate.Body);
         }
 
         internal string GetColumnFromExpression(Expression expression)
         {
-            ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            ExpressionParser<T> parser = new ExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string columnName = parser.GetColumnFromExpression(expression);
             return _Sanitizer.SanitizeIdentifier(columnName);
         }

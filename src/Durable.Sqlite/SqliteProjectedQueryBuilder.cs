@@ -839,7 +839,7 @@ namespace Durable.Sqlite
 
         private void ParseSelector()
         {
-            ExpressionParser<TEntity> parser = new ExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer);
+            ExpressionParser<TEntity> parser = new ExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider, _Repository._DataTypeConverter);
             _SelectMappings = parser.ParseSelectExpression(_Selector);
         }
 

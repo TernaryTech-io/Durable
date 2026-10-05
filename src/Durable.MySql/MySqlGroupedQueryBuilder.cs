@@ -832,7 +832,7 @@ namespace Durable.MySql
             List<string> whereClauses = _QueryBuilder.GetWhereClauses();
             if (predicate != null)
             {
-                MySqlExpressionParser<TEntity> parser = new MySqlExpressionParser<TEntity>(_Repository._ColumnMappings, _Sanitizer);
+                MySqlExpressionParser<TEntity> parser = new MySqlExpressionParser<TEntity>(_Repository._ColumnMappings, _Sanitizer, _Repository._MetadataProvider, _Repository._DataTypeConverter);
                 string predicateClause = parser.ParseExpression(predicate.Body);
                 whereClauses.Add(predicateClause);
             }

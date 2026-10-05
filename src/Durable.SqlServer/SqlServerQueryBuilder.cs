@@ -75,7 +75,7 @@ namespace Durable.SqlServer
         {
             _Repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _Transaction = transaction;
-            _ExpressionParser = new SqlServerExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer);
+            _ExpressionParser = new SqlServerExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider, _Repository._DataTypeConverter);
             _JoinBuilder = new SqlServerJoinBuilder(_Repository._Sanitizer, _Repository._MetadataProvider);
             _EntityMapper = new SqlServerEntityMapper<TEntity>(_Repository._DataTypeConverter, _Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider);
         }

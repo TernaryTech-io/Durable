@@ -16,6 +16,7 @@
     public class ExpressionParser<T> where T : class
     {
         private readonly IEntityMetadataProvider _MetadataProvider;
+        private readonly IDataTypeConverter _DataTypeConverter;
 
         #region Public-Members
         
@@ -36,10 +37,12 @@
         /// <param name="columnMappings">A dictionary mapping property names to their corresponding database column names and PropertyInfo objects.</param>
         /// <param name="sanitizer">The sanitizer to use for value formatting and SQL injection prevention. Defaults to SqliteSanitizer if null.</param>
         /// <param name="metadataProvider">The entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
+        /// <param name="dataTypeConverter">Optional data type converter applied to constant values the sanitizer cannot format natively (e.g. custom key types). When null, such values are formatted as before.</param>
         /// <exception cref="ArgumentNullException">Thrown when columnMappings is null.</exception>
-        public ExpressionParser(Dictionary<string, PropertyInfo> columnMappings, ISanitizer sanitizer = null, IEntityMetadataProvider? metadataProvider = null)
+        public ExpressionParser(Dictionary<string, PropertyInfo> columnMappings, ISanitizer sanitizer = null, IEntityMetadataProvider? metadataProvider = null, IDataTypeConverter dataTypeConverter = null)
         {
             _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
+            _DataTypeConverter = dataTypeConverter;
             _ColumnMappings = columnMappings;
             _Sanitizer = sanitizer ?? new SqliteSanitizer();
         }
@@ -562,8 +565,26 @@
 
         private string VisitBinary(BinaryExpression binary)
         {
-            string left = Visit(binary.Left);
-            string right = Visit(binary.Right);
+            string left;
+            string right;
+
+            // Enum properties stored as text (Flags.String): C# compiles enum comparisons to their
+            // underlying integer type, so format the compared value as the enum member name instead
+            if (TryGetStringEnumType(binary.Left, out Type leftEnumType) && !ContainsParameterReference(binary.Right))
+            {
+                left = Visit(binary.Left);
+                right = FormatEnumName(leftEnumType!, binary.Right);
+            }
+            else if (TryGetStringEnumType(binary.Right, out Type rightEnumType) && !ContainsParameterReference(binary.Left))
+            {
+                left = FormatEnumName(rightEnumType!, binary.Left);
+                right = Visit(binary.Right);
+            }
+            else
+            {
+                left = Visit(binary.Left);
+                right = Visit(binary.Right);
+            }
 
             string op = binary.NodeType switch
             {
@@ -804,6 +825,78 @@
             return getter();
         }
 
+        private object ConvertCustomValue(object value)
+        {
+            if (value == null || _DataTypeConverter == null || IsNativelyFormattable(value.GetType()))
+                return value;
+
+            return _DataTypeConverter.ConvertToDatabase(value, value.GetType());
+        }
+
+        private static bool IsNativelyFormattable(Type type)
+        {
+            return type.IsPrimitive
+                || type.IsEnum
+                || type.IsArray
+                || type == typeof(string)
+                || type == typeof(decimal)
+                || type == typeof(DateTime)
+                || type == typeof(DateTimeOffset)
+                || type == typeof(DateOnly)
+                || type == typeof(TimeOnly)
+                || type == typeof(TimeSpan)
+                || type == typeof(Guid);
+        }
+
+        private string BuildInClause(string item, System.Collections.IEnumerable collection)
+        {
+            List<string> values = new List<string>();
+            foreach (object collectionItem in collection)
+            {
+                values.Add(FormatValue(collectionItem));
+            }
+
+            // An empty IN list is invalid SQL; an empty collection matches nothing
+            if (values.Count == 0)
+                return "1 = 0";
+
+            return $"{item} IN ({string.Join(", ", values)})";
+        }
+
+        private bool TryGetStringEnumType(Expression expression, out Type enumType)
+        {
+            enumType = null;
+            while (expression is UnaryExpression unary && (unary.NodeType == ExpressionType.Convert || unary.NodeType == ExpressionType.ConvertChecked))
+            {
+                expression = unary.Operand;
+            }
+
+            if (expression is not MemberExpression member ||
+                member.Expression is not ParameterExpression ||
+                member.Member is not PropertyInfo property)
+            {
+                return false;
+            }
+
+            Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            if (!type.IsEnum || _MetadataProvider.GetColumn(property)?.PropertyFlags.HasFlag(Flags.String) != true)
+            {
+                return false;
+            }
+
+            enumType = type;
+            return true;
+        }
+
+        private string FormatEnumName(Type enumType, Expression valueExpression)
+        {
+            object value = GetConstantValue(valueExpression);
+            if (value == null)
+                return FormatValue(null);
+
+            return FormatValue(Enum.ToObject(enumType, value).ToString());
+        }
+
         private object GetConstantValue(Expression expression)
         {
             if (expression is ConstantExpression constant)
@@ -817,6 +910,8 @@
 
         private string FormatValue(object value)
         {
+            value = ConvertCustomValue(value);
+
             return _Sanitizer.FormatValue(value);
         }
 
@@ -874,12 +969,7 @@
                     
                     if (collection != null)
                     {
-                        List<string> values = new List<string>();
-                        foreach (object collectionItem in collection)
-                        {
-                            values.Add(FormatValue(collectionItem));
-                        }
-                        return $"{item} IN ({string.Join(", ", values)})";
+                        return BuildInClause(item, collection);
                     }
                 }
                 else
@@ -901,12 +991,7 @@
                 
                 if (collection != null)
                 {
-                    List<string> values = new List<string>();
-                    foreach (object collectionItem in collection)
-                    {
-                        values.Add(FormatValue(collectionItem));
-                    }
-                    return $"{item} IN ({string.Join(", ", values)})";
+                    return BuildInClause(item, collection);
                 }
             }
             

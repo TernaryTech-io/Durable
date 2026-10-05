@@ -1545,6 +1545,19 @@
             .NET's literal format matching sets Kind=Unspecified or converts to Local.
             </summary>
         </member>
+        <member name="T:Durable.Helpers.SqlConditions">
+            <summary>
+            Helpers for composing SQL conditions.
+            </summary>
+        </member>
+        <member name="M:Durable.Helpers.SqlConditions.JoinAnd(System.Collections.Generic.IEnumerable{System.String})">
+            <summary>
+            Combines conditions with AND. When there is more than one condition each is wrapped in
+            parentheses, so a condition containing OR cannot bind across its neighbours.
+            </summary>
+            <param name="conditions">The conditions to combine.</param>
+            <returns>The combined condition.</returns>
+        </member>
         <member name="T:Durable.IAsyncDurableResult`1">
             <summary>
             Represents the result of an asynchronous durable query operation.

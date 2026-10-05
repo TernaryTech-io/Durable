@@ -837,7 +837,7 @@ namespace Durable.MySql
             // parse them into SQL using the expression parser
             try
             {
-                MySqlExpressionParser<TEntity> parser = new MySqlExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer);
+                MySqlExpressionParser<TEntity> parser = new MySqlExpressionParser<TEntity>(_Repository._ColumnMappings, _Repository._Sanitizer, _Repository._MetadataProvider, _Repository._DataTypeConverter);
                 return parser.ParseExpression(expression);
             }
             catch (NotSupportedException ex) when (ex.Message.Contains("Method") && ex.Message.Contains("is not supported"))

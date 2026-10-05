@@ -321,6 +321,7 @@ namespace Durable.MySql
         /// <returns>The entity with the specified identifier.</returns>
         public T? ReadById(object id, ITransaction? transaction = null)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
             return Query(transaction).Where(BuildIdPredicate(id)).Execute().FirstOrDefault();
         }
@@ -1098,6 +1099,7 @@ namespace Durable.MySql
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
         public async Task<T?> ReadByIdAsync(object id, ITransaction? transaction = null, CancellationToken token = default)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             if (id == null)
                 throw new ArgumentNullException(nameof(id));
 
@@ -1127,6 +1129,7 @@ namespace Durable.MySql
         /// <exception cref="ArgumentNullException">Thrown when id is null.</exception>
         public bool ExistsById(object id, ITransaction? transaction = null)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
             return Query(transaction).Where(BuildIdPredicate(id)).Take(1).Execute().Any();
         }
@@ -1162,6 +1165,7 @@ namespace Durable.MySql
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
         public async Task<bool> ExistsByIdAsync(object id, ITransaction? transaction = null, CancellationToken token = default)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             if (id == null)
                 throw new ArgumentNullException(nameof(id));
 
@@ -1184,7 +1188,7 @@ namespace Durable.MySql
 
             if (predicate != null)
             {
-                MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+                MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
                 string whereClause = parser.ParseExpressionWithParameters(predicate.Body);
                 sql += $" WHERE {whereClause}";
                 foreach (var p in parser.GetParameters()) parameters.Add(new SqlParameter(p.name, p.value));
@@ -1221,7 +1225,7 @@ namespace Durable.MySql
 
             if (predicate != null)
             {
-                MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+                MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
                 string whereClause = parser.ParseExpressionWithParameters(predicate.Body);
                 sql += $" WHERE {whereClause}";
                 foreach (var p in parser.GetParameters()) parameters.Add(new SqlParameter(p.name, p.value));
@@ -1253,7 +1257,7 @@ namespace Durable.MySql
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM `{_TableName}`");
@@ -1295,7 +1299,7 @@ namespace Durable.MySql
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM `{_TableName}`");
@@ -1336,7 +1340,7 @@ namespace Durable.MySql
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             // MySQL doesn't need explicit casting like SQLite, AVG function works with numeric types
@@ -1378,7 +1382,7 @@ namespace Durable.MySql
             if (selector == null)
                 throw new ArgumentNullException(nameof(selector));
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM `{_TableName}`");
@@ -1424,7 +1428,7 @@ namespace Durable.MySql
 
             token.ThrowIfCancellationRequested();
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM `{_TableName}`");
@@ -1470,7 +1474,7 @@ namespace Durable.MySql
 
             token.ThrowIfCancellationRequested();
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM `{_TableName}`");
@@ -1515,7 +1519,7 @@ namespace Durable.MySql
 
             token.ThrowIfCancellationRequested();
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM `{_TableName}`");
@@ -1560,7 +1564,7 @@ namespace Durable.MySql
 
             token.ThrowIfCancellationRequested();
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
             StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM `{_TableName}`");
@@ -1889,7 +1893,7 @@ namespace Durable.MySql
 
                 if (columnName == _PrimaryKeyColumn)
                 {
-                    idValue = value;
+                    idValue = ConvertPrimaryKeyValue(value);
                 }
                 else if (_VersionColumnInfo != null && columnName == _VersionColumnInfo.ColumnName)
                 {
@@ -2047,7 +2051,7 @@ namespace Durable.MySql
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
             if (field == null) throw new ArgumentNullException(nameof(field));
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
@@ -2108,7 +2112,7 @@ namespace Durable.MySql
 
                 if (columnName == _PrimaryKeyColumn)
                 {
-                    idValue = value;
+                    idValue = ConvertPrimaryKeyValue(value);
                 }
                 else if (_VersionColumnInfo != null && columnName == _VersionColumnInfo.ColumnName)
                 {
@@ -2275,7 +2279,7 @@ namespace Durable.MySql
             if (field == null) throw new ArgumentNullException(nameof(field));
             token.ThrowIfCancellationRequested();
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
@@ -2353,7 +2357,7 @@ namespace Durable.MySql
         {
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
@@ -2431,7 +2435,7 @@ namespace Durable.MySql
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
             token.ThrowIfCancellationRequested();
 
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
 
             // Build WHERE clause with parameters
             string whereClause = parser.ParseExpressionWithParameters(predicate.Body, true);
@@ -2466,7 +2470,7 @@ namespace Durable.MySql
         {
             if (entity == null) throw new ArgumentNullException(nameof(entity));
 
-            object? id = _PrimaryKeyProperty.GetValue(entity);
+            object? id = ConvertPrimaryKeyValue(_PrimaryKeyProperty.GetValue(entity));
             if (id == null) throw new InvalidOperationException("Cannot delete entity with null primary key");
 
             // If the entity has a version column, use optimistic concurrency control
@@ -2520,6 +2524,7 @@ namespace Durable.MySql
         /// <exception cref="ArgumentNullException">Thrown when id is null.</exception>
         public bool DeleteById(object id, ITransaction? transaction = null)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
 
             string sql = $"DELETE FROM `{_TableName}` WHERE `{_PrimaryKeyColumn}` = @id";
@@ -2597,7 +2602,7 @@ namespace Durable.MySql
             if (entity == null) throw new ArgumentNullException(nameof(entity));
             token.ThrowIfCancellationRequested();
 
-            object? id = _PrimaryKeyProperty.GetValue(entity);
+            object? id = ConvertPrimaryKeyValue(_PrimaryKeyProperty.GetValue(entity));
             if (id == null) throw new InvalidOperationException("Cannot delete entity with null primary key");
 
             // If the entity has a version column, use optimistic concurrency control
@@ -2653,6 +2658,7 @@ namespace Durable.MySql
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
         public async Task<bool> DeleteByIdAsync(object id, ITransaction? transaction = null, CancellationToken token = default)
         {
+            id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
             token.ThrowIfCancellationRequested();
 
@@ -3918,7 +3924,7 @@ namespace Durable.MySql
         /// <returns>The sanitized column name for the expression.</returns>
         internal string GetColumnFromExpression(Expression expression)
         {
-            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer);
+            MySqlExpressionParser<T> parser = new MySqlExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             // The parser's GetColumnFromExpression already returns sanitized column names with backticks
             return parser.GetColumnFromExpression(expression);
         }
