@@ -882,7 +882,7 @@ namespace Durable.Postgres
             sql.Append(string.Join(", ", selectColumns));
 
             // FROM clause - PostgreSQL uses double quotes for identifiers
-            sql.Append($" FROM \"{_Repository._TableName}\"");
+            sql.Append($" FROM {_Repository._QualifiedTableName}");
 
             // WHERE clause
             if (_WhereClauses.Count > 0)

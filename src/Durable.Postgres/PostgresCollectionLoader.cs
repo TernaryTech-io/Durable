@@ -198,7 +198,7 @@ namespace Durable.Postgres
             if (primaryKeyValues.Count == 0) return;
 
             // Build SQL to load related entities
-            string relatedTableName = _Sanitizer.SanitizeIdentifier(include.RelatedTableName);
+            string relatedTableName = _Sanitizer.SanitizeTableName(include.RelatedTableName, include.RelatedSchema);
             string foreignKeyColumn = _Sanitizer.SanitizeIdentifier(GetColumnName(include.ForeignKeyProperty));
             string primaryKeyColumn = _Sanitizer.SanitizeIdentifier(GetColumnName(primaryKeyProperty));
 
@@ -280,8 +280,8 @@ namespace Durable.Postgres
             if (primaryKeyValues.Count == 0) return;
 
             // Build SQL for many-to-many join
-            string junctionTableName = _Sanitizer.SanitizeIdentifier(include.JunctionTableName);
-            string relatedTableName = _Sanitizer.SanitizeIdentifier(include.RelatedTableName);
+            string junctionTableName = _Sanitizer.SanitizeTableName(include.JunctionTableName, include.JunctionSchema);
+            string relatedTableName = _Sanitizer.SanitizeTableName(include.RelatedTableName, include.RelatedSchema);
             string primaryKeyColumn = _Sanitizer.SanitizeIdentifier(GetColumnName(primaryKeyProperty));
 
             // Assume junction table has columns named after the entity tables
@@ -350,7 +350,7 @@ namespace Durable.Postgres
             if (primaryKeyValues.Count == 0) return;
 
             // Build SQL to load related entities
-            string relatedTableName = _Sanitizer.SanitizeIdentifier(include.RelatedTableName);
+            string relatedTableName = _Sanitizer.SanitizeTableName(include.RelatedTableName, include.RelatedSchema);
             string foreignKeyColumn = _Sanitizer.SanitizeIdentifier(GetColumnName(include.ForeignKeyProperty));
 
             StringBuilder sql = new StringBuilder();

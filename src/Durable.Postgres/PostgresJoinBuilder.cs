@@ -204,7 +204,7 @@ namespace Durable.Postgres
             StringBuilder joinBuilder,
             Dictionary<string, List<PostgresColumnMapping>> columnMappingsByAlias)
         {
-            string joinTable = _Sanitizer.SanitizeIdentifier(include.RelatedTableName);
+            string joinTable = _Sanitizer.SanitizeTableName(include.RelatedTableName, include.RelatedSchema);
             string joinAlias = include.JoinAlias;
 
             // Determine join condition based on foreign key relationship
@@ -269,9 +269,9 @@ namespace Durable.Postgres
             if (include.JunctionTableName == null)
                 throw new InvalidOperationException($"Junction table name is required for many-to-many relationship '{include.PropertyName}'");
 
-            string junctionTable = _Sanitizer.SanitizeIdentifier(include.JunctionTableName);
+            string junctionTable = _Sanitizer.SanitizeTableName(include.JunctionTableName, include.JunctionSchema);
             string junctionAlias = $"jt_{include.JoinAlias}";
-            string targetTable = _Sanitizer.SanitizeIdentifier(include.RelatedTableName);
+            string targetTable = _Sanitizer.SanitizeTableName(include.RelatedTableName, include.RelatedSchema);
             string targetAlias = include.JoinAlias;
 
             // First join to junction table

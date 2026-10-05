@@ -195,6 +195,7 @@ namespace Durable.Postgres
                 NavigationProperty = navigationProperty,
                 RelatedEntityType = relatedEntityType,
                 RelatedTableName = GetTableName(relatedEntityType),
+                RelatedSchema = _MetadataProvider.GetEntityMetadata(relatedEntityType).Schema,
                 JoinAlias = GenerateAlias(),
                 Parent = parent,
                 IsCollection = isCollection
@@ -242,6 +243,7 @@ namespace Durable.Postgres
                 if (includeInfo.JunctionEntityType != null)
                 {
                     includeInfo.JunctionTableName = GetTableName(includeInfo.JunctionEntityType);
+                    includeInfo.JunctionSchema = _MetadataProvider.GetEntityMetadata(includeInfo.JunctionEntityType).Schema;
                     includeInfo.JunctionAlias = GenerateAlias();
                     includeInfo.JunctionParentKeyColumn = manyToManyAttr.ThisEntityForeignKeyProperty;
                     includeInfo.JunctionTargetKeyColumn = manyToManyAttr.RelatedEntityForeignKeyProperty;

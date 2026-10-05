@@ -846,6 +846,21 @@
             </summary>
             <returns>An enumerator for the elements in this group</returns>
         </member>
+        <member name="T:Durable.Postgres.PostgresIdentifierExtensions">
+            <summary>
+            Helpers for building PostgreSQL identifiers.
+            </summary>
+        </member>
+        <member name="M:Durable.Postgres.PostgresIdentifierExtensions.SanitizeTableName(Durable.ISanitizer,System.String,System.String)">
+            <summary>
+            Sanitizes a table name, qualifying it with its schema when one is specified.
+            </summary>
+            <param name="sanitizer">The identifier sanitizer.</param>
+            <param name="tableName">The table name.</param>
+            <param name="schema">The schema name, or null to leave the table unqualified.</param>
+            <returns>The sanitized, optionally schema-qualified, table name.</returns>
+            <exception cref="T:System.ArgumentNullException">Thrown when sanitizer or tableName is null.</exception>
+        </member>
         <member name="T:Durable.Postgres.PostgresIncludeInfo">
             <summary>
             Contains metadata about navigation properties for Include operations in PostgreSQL queries.
@@ -887,6 +902,11 @@
             Gets or sets the database table name for the related entity.
             </summary>
         </member>
+        <member name="P:Durable.Postgres.PostgresIncludeInfo.RelatedSchema">
+            <summary>
+            Gets or sets the schema of the related table, or null for the default schema.
+            </summary>
+        </member>
         <member name="P:Durable.Postgres.PostgresIncludeInfo.JoinAlias">
             <summary>
             Gets or sets the SQL alias used for the related table in JOIN operations.
@@ -920,6 +940,11 @@
         <member name="P:Durable.Postgres.PostgresIncludeInfo.JunctionTableName">
             <summary>
             Gets or sets the junction table name for many-to-many relationships.
+            </summary>
+        </member>
+        <member name="P:Durable.Postgres.PostgresIncludeInfo.JunctionSchema">
+            <summary>
+            Gets or sets the schema of the junction table, or null for the default schema.
             </summary>
         </member>
         <member name="P:Durable.Postgres.PostgresIncludeInfo.JunctionAlias">

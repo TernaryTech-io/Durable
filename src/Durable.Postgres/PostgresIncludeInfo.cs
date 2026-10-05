@@ -49,6 +49,11 @@ namespace Durable.Postgres
         public string RelatedTableName { get; set; } = string.Empty;
 
         /// <summary>
+        /// Gets or sets the schema of the related table, or null for the default schema.
+        /// </summary>
+        public string? RelatedSchema { get; set; }
+
+        /// <summary>
         /// Gets or sets the SQL alias used for the related table in JOIN operations.
         /// </summary>
         public string JoinAlias { get; set; } = string.Empty;
@@ -82,6 +87,11 @@ namespace Durable.Postgres
         /// Gets or sets the junction table name for many-to-many relationships.
         /// </summary>
         public string? JunctionTableName { get; set; }
+
+        /// <summary>
+        /// Gets or sets the schema of the junction table, or null for the default schema.
+        /// </summary>
+        public string? JunctionSchema { get; set; }
 
         /// <summary>
         /// Gets or sets the SQL alias for the junction table in many-to-many scenarios.

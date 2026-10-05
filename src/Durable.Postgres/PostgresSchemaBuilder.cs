@@ -47,6 +47,7 @@ namespace Durable.Postgres
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 
             string tableName = entityAttr.Name;
+            string? schema = _metadataProvider.GetEntityMetadata(entityType).Schema;
             StringBuilder sql = new StringBuilder();
             List<string> columnDefinitions = new List<string>();
             List<string> foreignKeyConstraints = new List<string>();
@@ -83,8 +84,16 @@ namespace Durable.Postgres
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have a primary key column");
 
             // Build the full CREATE TABLE statement
+            // Ensure the schema exists when the entity is mapped to a non-default schema
+            if (schema != null)
+            {
+                sql.Append("CREATE SCHEMA IF NOT EXISTS ");
+                sql.Append(_sanitizer.SanitizeIdentifier(schema));
+                sql.AppendLine(";");
+            }
+
             sql.Append("CREATE TABLE IF NOT EXISTS ");
-            sql.Append(_sanitizer.SanitizeIdentifier(tableName));
+            sql.Append(_sanitizer.SanitizeTableName(tableName, schema));
             sql.Append(" (");
             sql.AppendLine();
 
@@ -207,7 +216,7 @@ namespace Durable.Postgres
             fkDef.Append("FOREIGN KEY (");
             fkDef.Append(_sanitizer.SanitizeIdentifier(columnName));
             fkDef.Append(") REFERENCES ");
-            fkDef.Append(_sanitizer.SanitizeIdentifier(referencedTableName));
+            fkDef.Append(_sanitizer.SanitizeTableName(referencedTableName, _metadataProvider.GetEntityMetadata(fkAttr.ReferencedType).Schema));
             fkDef.Append("(");
             fkDef.Append(_sanitizer.SanitizeIdentifier(referencedColumnName));
             fkDef.Append(")");
@@ -324,6 +333,7 @@ namespace Durable.Postgres
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 
             string tableName = entityAttr.Name;
+            string qualifiedTableName = _sanitizer.SanitizeTableName(tableName, _metadataProvider.GetEntityMetadata(entityType).Schema);
 
             // Build indexes from IndexAttribute on properties
             Dictionary<string, List<IndexPropertyInfo>> indexGroups =
@@ -368,7 +378,7 @@ namespace Durable.Postgres
                 sql.Append("INDEX IF NOT EXISTS ");
                 sql.Append(_sanitizer.SanitizeIdentifier(indexName));
                 sql.Append(" ON ");
-                sql.Append(_sanitizer.SanitizeIdentifier(tableName));
+                sql.Append(qualifiedTableName);
                 sql.Append(" (");
 
                 for (int i = 0; i < columns.Count; i++)
@@ -402,7 +412,7 @@ namespace Durable.Postgres
                 sql.Append("INDEX IF NOT EXISTS ");
                 sql.Append(_sanitizer.SanitizeIdentifier(compositeAttr.Name));
                 sql.Append(" ON ");
-                sql.Append(_sanitizer.SanitizeIdentifier(tableName));
+                sql.Append(qualifiedTableName);
                 sql.Append(" (");
 
                 for (int i = 0; i < compositeAttr.ColumnNames.Length; i++)

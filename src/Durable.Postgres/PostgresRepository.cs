@@ -107,6 +107,8 @@ namespace Durable.Postgres
 
         internal readonly IConnectionFactory _ConnectionFactory;
         internal readonly string _TableName;
+        internal readonly string? _Schema;
+        internal readonly string _QualifiedTableName;
         internal readonly string _PrimaryKeyColumn;
         internal readonly PropertyInfo _PrimaryKeyProperty;
         internal readonly Dictionary<string, PropertyInfo> _ColumnMappings;
@@ -152,6 +154,8 @@ namespace Durable.Postgres
             _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
             _DataTypeConverter = dataTypeConverter ?? new PostgresDataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
+            _Schema = _MetadataProvider.GetEntityMetadata(typeof(T)).Schema;
+            _QualifiedTableName = _Sanitizer.SanitizeTableName(_TableName, _Schema);
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
             _PrimaryKeyProperty = primaryKeyInfo.Property;
@@ -187,6 +191,8 @@ namespace Durable.Postgres
             _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
             _DataTypeConverter = dataTypeConverter ?? new PostgresDataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
+            _Schema = _MetadataProvider.GetEntityMetadata(typeof(T)).Schema;
+            _QualifiedTableName = _Sanitizer.SanitizeTableName(_TableName, _Schema);
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
             _PrimaryKeyProperty = primaryKeyInfo.Property;
@@ -221,6 +227,8 @@ namespace Durable.Postgres
             _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
             _DataTypeConverter = dataTypeConverter ?? new PostgresDataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
+            _Schema = _MetadataProvider.GetEntityMetadata(typeof(T)).Schema;
+            _QualifiedTableName = _Sanitizer.SanitizeTableName(_TableName, _Schema);
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
             _PrimaryKeyProperty = primaryKeyInfo.Property;
@@ -508,7 +516,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            string sql = $"SELECT * FROM {_Sanitizer.SanitizeIdentifier(_TableName)} WHERE {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)} = @id LIMIT 1";
+            string sql = $"SELECT * FROM {_QualifiedTableName} WHERE {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)} = @id LIMIT 1";
 
             await foreach (T result in FromSqlAsync(sql, transaction, token, ("@id", id)))
             {
@@ -567,7 +575,7 @@ namespace Durable.Postgres
 
             PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
-            string sql = $"SELECT EXISTS(SELECT 1 FROM {_Sanitizer.SanitizeIdentifier(_TableName)} WHERE {whereClause})";
+            string sql = $"SELECT EXISTS(SELECT 1 FROM {_QualifiedTableName} WHERE {whereClause})";
             object[] parameters = expressionParser.GetParameters().Cast<object>().ToArray();
 
             if (transaction != null)
@@ -608,7 +616,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            string sql = $"SELECT EXISTS(SELECT 1 FROM {_Sanitizer.SanitizeIdentifier(_TableName)} WHERE {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)} = @id)";
+            string sql = $"SELECT EXISTS(SELECT 1 FROM {_QualifiedTableName} WHERE {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)} = @id)";
             (string, object?)[] parameters = { ("@id", id) };
 
             if (transaction != null)
@@ -647,13 +655,13 @@ namespace Durable.Postgres
 
             if (predicate == null)
             {
-                sql = $"SELECT COUNT(*) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}";
+                sql = $"SELECT COUNT(*) FROM {_QualifiedTableName}";
             }
             else
             {
                 PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
                 string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
-                sql = $"SELECT COUNT(*) FROM {_Sanitizer.SanitizeIdentifier(_TableName)} WHERE {whereClause}";
+                sql = $"SELECT COUNT(*) FROM {_QualifiedTableName} WHERE {whereClause}";
                 parameters = expressionParser.GetParameters().Cast<object>().ToArray();
             }
 
@@ -696,13 +704,13 @@ namespace Durable.Postgres
 
             if (predicate == null)
             {
-                sql = $"SELECT COUNT(*) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}";
+                sql = $"SELECT COUNT(*) FROM {_QualifiedTableName}";
             }
             else
             {
                 PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
                 string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
-                sql = $"SELECT COUNT(*) FROM {_Sanitizer.SanitizeIdentifier(_TableName)} WHERE {whereClause}";
+                sql = $"SELECT COUNT(*) FROM {_QualifiedTableName} WHERE {whereClause}";
                 parameters = expressionParser.GetParameters().Cast<object>().ToArray();
             }
 
@@ -747,7 +755,7 @@ namespace Durable.Postgres
             PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
+            StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM {_QualifiedTableName}");
             List<(string name, object? value)> parameters = new List<(string name, object?)>();
 
             if (predicate != null)
@@ -797,7 +805,7 @@ namespace Durable.Postgres
             PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
+            StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM {_QualifiedTableName}");
             List<(string name, object? value)> parameters = new List<(string name, object?)>();
 
             if (predicate != null)
@@ -846,7 +854,7 @@ namespace Durable.Postgres
             PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
+            StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM {_QualifiedTableName}");
             List<(string name, object? value)> parameters = new List<(string name, object?)>();
 
             if (predicate != null)
@@ -895,7 +903,7 @@ namespace Durable.Postgres
             PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
+            StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM {_QualifiedTableName}");
             List<(string name, object? value)> parameters = new List<(string name, object?)>();
 
             if (predicate != null)
@@ -950,7 +958,7 @@ namespace Durable.Postgres
             PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
+            StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM {_QualifiedTableName}");
             List<(string name, object? value)> parameters = new List<(string name, object?)>();
 
             if (predicate != null)
@@ -1004,7 +1012,7 @@ namespace Durable.Postgres
             PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
+            StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM {_QualifiedTableName}");
             List<(string name, object? value)> parameters = new List<(string name, object?)>();
 
             if (predicate != null)
@@ -1057,7 +1065,7 @@ namespace Durable.Postgres
             PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
+            StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM {_QualifiedTableName}");
             List<(string name, object? value)> parameters = new List<(string name, object?)>();
 
             if (predicate != null)
@@ -1110,7 +1118,7 @@ namespace Durable.Postgres
             PostgresExpressionParser<T> parser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM {_Sanitizer.SanitizeIdentifier(_TableName)}");
+            StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM {_QualifiedTableName}");
             List<(string name, object? value)> parameters = new List<(string name, object?)>();
 
             if (predicate != null)
@@ -1248,7 +1256,7 @@ namespace Durable.Postgres
                 parameters.Add(($"@{columnName}", _DataTypeConverter.ConvertToDatabase(value!, property.PropertyType, property)));
             }
 
-            string insertSql = $"INSERT INTO {_Sanitizer.SanitizeIdentifier(_TableName)} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.name))})";
+            string insertSql = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.name))})";
 
             PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
             bool hasAutoIncrement = pkAttr?.PropertyFlags.HasFlag(Flags.AutoIncrement) == true;
@@ -1431,7 +1439,7 @@ namespace Durable.Postgres
 
             parameters.Add(("@value", convertedValue));
 
-            string sql = $"UPDATE {_Sanitizer.SanitizeIdentifier(_TableName)} SET {columnName} = @value WHERE {whereClause}";
+            string sql = $"UPDATE {_QualifiedTableName} SET {columnName} = @value WHERE {whereClause}";
 
             int rowsAffected;
             if (transaction != null)
@@ -1514,12 +1522,12 @@ namespace Durable.Postgres
             string sql;
             if (_VersionColumnInfo != null)
             {
-                sql = $"UPDATE {_Sanitizer.SanitizeIdentifier(_TableName)} SET {string.Join(", ", setPairs)} WHERE {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)} = @id AND {_Sanitizer.SanitizeIdentifier(_VersionColumnInfo.ColumnName)} = @current_version";
+                sql = $"UPDATE {_QualifiedTableName} SET {string.Join(", ", setPairs)} WHERE {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)} = @id AND {_Sanitizer.SanitizeIdentifier(_VersionColumnInfo.ColumnName)} = @current_version";
                 parameters.Add(("@current_version", currentVersion));
             }
             else
             {
-                sql = $"UPDATE {_Sanitizer.SanitizeIdentifier(_TableName)} SET {string.Join(", ", setPairs)} WHERE {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)} = @id";
+                sql = $"UPDATE {_QualifiedTableName} SET {string.Join(", ", setPairs)} WHERE {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)} = @id";
             }
 
             int rowsAffected;
@@ -1631,7 +1639,7 @@ namespace Durable.Postgres
 
             parameters.Add(("@value", convertedValue));
 
-            string sql = $"UPDATE {_Sanitizer.SanitizeIdentifier(_TableName)} SET {columnName} = @value WHERE {whereClause}";
+            string sql = $"UPDATE {_QualifiedTableName} SET {columnName} = @value WHERE {whereClause}";
 
             int rowsAffected;
             if (transaction != null)
@@ -1688,7 +1696,7 @@ namespace Durable.Postgres
             List<(string name, object? value)> parameters = expressionParser.GetParameters();
 
             // Build UPDATE SQL
-            string sql = $"UPDATE {_Sanitizer.SanitizeIdentifier(_TableName)} SET {setClause} WHERE {whereClause}";
+            string sql = $"UPDATE {_QualifiedTableName} SET {setClause} WHERE {whereClause}";
 
             int rowsAffected;
             if (transaction != null)
@@ -1727,7 +1735,7 @@ namespace Durable.Postgres
 
             PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
-            string sql = $"DELETE FROM {_Sanitizer.SanitizeIdentifier(_TableName)} WHERE {whereClause}";
+            string sql = $"DELETE FROM {_QualifiedTableName} WHERE {whereClause}";
             object[] parameters = expressionParser.GetParameters().Cast<object>().ToArray();
 
             int rowsAffected;
@@ -1788,7 +1796,7 @@ namespace Durable.Postgres
             List<(string name, object? value)> parameters = expressionParser.GetParameters();
 
             // Build UPDATE SQL
-            string sql = $"UPDATE {_Sanitizer.SanitizeIdentifier(_TableName)} SET {setClause} WHERE {whereClause}";
+            string sql = $"UPDATE {_QualifiedTableName} SET {setClause} WHERE {whereClause}";
 
             int rowsAffected;
             if (transaction != null)
@@ -1831,7 +1839,7 @@ namespace Durable.Postgres
 
             PostgresExpressionParser<T> expressionParser = new PostgresExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider);
             string whereClause = expressionParser.ParseExpressionWithParameters(predicate.Body);
-            string sql = $"DELETE FROM {_Sanitizer.SanitizeIdentifier(_TableName)} WHERE {whereClause}";
+            string sql = $"DELETE FROM {_QualifiedTableName} WHERE {whereClause}";
             object[] parameters = expressionParser.GetParameters().Cast<object>().ToArray();
 
             int rowsAffected;
@@ -1887,7 +1895,7 @@ namespace Durable.Postgres
             if (id == null)
                 throw new ArgumentNullException(nameof(id));
 
-            string sql = $"DELETE FROM {_Sanitizer.SanitizeIdentifier(_TableName)} WHERE {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)} = @id";
+            string sql = $"DELETE FROM {_QualifiedTableName} WHERE {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)} = @id";
 
             int rowsAffected;
             if (transaction != null)
@@ -1947,7 +1955,7 @@ namespace Durable.Postgres
         /// <returns>The number of entities deleted.</returns>
         public int DeleteAll(ITransaction? transaction = null)
         {
-            string sql = $"DELETE FROM {_Sanitizer.SanitizeIdentifier(_TableName)}";
+            string sql = $"DELETE FROM {_QualifiedTableName}";
 
             int rowsAffected;
             if (transaction != null)
@@ -2012,7 +2020,7 @@ namespace Durable.Postgres
 
             token.ThrowIfCancellationRequested();
 
-            string sql = $"DELETE FROM {_Sanitizer.SanitizeIdentifier(_TableName)} WHERE {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)} = @id";
+            string sql = $"DELETE FROM {_QualifiedTableName} WHERE {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)} = @id";
 
             int rowsAffected;
             if (transaction != null)
@@ -2086,7 +2094,7 @@ namespace Durable.Postgres
         {
             token.ThrowIfCancellationRequested();
 
-            string sql = $"DELETE FROM {_Sanitizer.SanitizeIdentifier(_TableName)}";
+            string sql = $"DELETE FROM {_QualifiedTableName}";
 
             int rowsAffected;
             if (transaction != null)
@@ -2160,7 +2168,7 @@ namespace Durable.Postgres
             }
 
             // PostgreSQL UPSERT using ON CONFLICT DO UPDATE with RETURNING clause to get the ID
-            string sql = $"INSERT INTO {_Sanitizer.SanitizeIdentifier(_TableName)} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)}) ON CONFLICT ({_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)}) DO UPDATE SET {string.Join(", ", updatePairs)} RETURNING {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)}";
+            string sql = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)}) ON CONFLICT ({_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)}) DO UPDATE SET {string.Join(", ", updatePairs)} RETURNING {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)}";
 
             object? returnedId;
             if (transaction != null)
@@ -2294,7 +2302,7 @@ namespace Durable.Postgres
             }
 
             // PostgreSQL UPSERT using ON CONFLICT DO UPDATE with RETURNING clause to get the ID
-            string sql = $"INSERT INTO {_Sanitizer.SanitizeIdentifier(_TableName)} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)}) ON CONFLICT ({_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)}) DO UPDATE SET {string.Join(", ", updatePairs)} RETURNING {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)}";
+            string sql = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)}) ON CONFLICT ({_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)}) DO UPDATE SET {string.Join(", ", updatePairs)} RETURNING {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)}";
 
             object? returnedId;
             if (transaction != null)
@@ -3083,11 +3091,11 @@ namespace Durable.Postgres
                 string sql;
                 if (autoIncrementProperty != null)
                 {
-                    sql = $"INSERT INTO {_Sanitizer.SanitizeIdentifier(_TableName)} ({string.Join(", ", columns)}) VALUES {string.Join(", ", valueRows)} RETURNING {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)}";
+                    sql = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", columns)}) VALUES {string.Join(", ", valueRows)} RETURNING {_Sanitizer.SanitizeIdentifier(_PrimaryKeyColumn)}";
                 }
                 else
                 {
-                    sql = $"INSERT INTO {_Sanitizer.SanitizeIdentifier(_TableName)} ({string.Join(", ", columns)}) VALUES {string.Join(", ", valueRows)}";
+                    sql = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", columns)}) VALUES {string.Join(", ", valueRows)}";
                 }
 
                 // Execute batch insert
@@ -3401,8 +3409,8 @@ namespace Durable.Postgres
             EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             string tableName = entityAttr!.Name; // Already validated in ValidateTable
 
-            // Get schema name from settings (default to "public")
-            string schemaName = Settings?.Database ?? "public";
+            // Get schema name from entity metadata (default to "public")
+            string schemaName = _MetadataProvider.GetEntityMetadata(entityType).Schema ?? "public";
 
             // Check if table exists
             bool tableExists;
@@ -3468,8 +3476,8 @@ namespace Durable.Postgres
             EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             string tableName = entityAttr!.Name; // Already validated in ValidateTable
 
-            // Get schema name from settings (default to "public")
-            string schemaName = Settings?.Database ?? "public";
+            // Get schema name from entity metadata (default to "public")
+            string schemaName = _MetadataProvider.GetEntityMetadata(entityType).Schema ?? "public";
 
             // Check if table exists
             bool tableExists;
@@ -3683,7 +3691,7 @@ namespace Durable.Postgres
 
             // If table exists, check schema compatibility
             string tableName = entityAttr.Name;
-            string schemaName = Settings?.Database ?? "public";
+            string schemaName = _MetadataProvider.GetEntityMetadata(entityType).Schema ?? "public";
             try
             {
                 using (DbConnection conn = _ConnectionFactory.GetConnection())
@@ -3939,7 +3947,7 @@ namespace Durable.Postgres
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 
             string tableName = entityAttr.Name;
-            string schemaName = "public"; // PostgreSQL default schema
+            string schemaName = _MetadataProvider.GetEntityMetadata(entityType).Schema ?? "public";
 
             using (DbConnection conn = _ConnectionFactory.GetConnection())
             {
@@ -3963,7 +3971,7 @@ namespace Durable.Postgres
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 
             string tableName = entityAttr.Name;
-            string schemaName = "public"; // PostgreSQL default schema
+            string schemaName = _MetadataProvider.GetEntityMetadata(entityType).Schema ?? "public";
 
             using (DbConnection conn = _ConnectionFactory.GetConnection())
             {

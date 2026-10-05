@@ -947,7 +947,7 @@ namespace Durable.Postgres
             }
             else
             {
-                string tableName = _Repository._Sanitizer.SanitizeIdentifier(_Repository._TableName);
+                string tableName = _Repository._QualifiedTableName;
                 string selectClause = $"{tableName}.*";
                 if (_WindowFunctions.Count > 0)
                 {
@@ -967,7 +967,7 @@ namespace Durable.Postgres
             }
             else
             {
-                string tableName = _Repository._Sanitizer.SanitizeIdentifier(_Repository._TableName);
+                string tableName = _Repository._QualifiedTableName;
                 // If we have includes/joins, use the t0 alias that the JoinBuilder expects
                 if (joinResult != null && !string.IsNullOrEmpty(joinResult.JoinClause))
                 {
@@ -1437,7 +1437,7 @@ namespace Durable.Postgres
             List<string> sqlParts = new List<string>();
 
             sqlParts.Add("SELECT COUNT(*)");
-            string tableName = _Repository._Sanitizer.SanitizeIdentifier(_Repository._TableName);
+            string tableName = _Repository._QualifiedTableName;
             sqlParts.Add($"FROM {tableName}");
 
             if (_WhereClauses.Count > 0)
@@ -1453,7 +1453,7 @@ namespace Durable.Postgres
             List<string> sqlParts = new List<string>();
 
             sqlParts.Add($"SELECT {function}({column})");
-            string tableName = _Repository._Sanitizer.SanitizeIdentifier(_Repository._TableName);
+            string tableName = _Repository._QualifiedTableName;
             sqlParts.Add($"FROM {tableName}");
 
             if (_WhereClauses.Count > 0)
@@ -1468,7 +1468,7 @@ namespace Durable.Postgres
         {
             List<string> sqlParts = new List<string>();
 
-            string tableName = _Repository._Sanitizer.SanitizeIdentifier(_Repository._TableName);
+            string tableName = _Repository._QualifiedTableName;
             sqlParts.Add($"DELETE FROM {tableName}");
 
             if (_WhereClauses.Count > 0)
