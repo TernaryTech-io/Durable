@@ -791,7 +791,7 @@ namespace Durable.SqlServer
 
             sql.Append("SELECT ");
             sql.Append(string.Join(", ", sanitizedColumns));
-            sql.Append($" FROM {_Sanitizer.SanitizeIdentifier(_Repository._TableName)}");
+            sql.Append($" FROM {_Repository._QualifiedTableName}");
 
             List<string> whereClauses = _QueryBuilder.GetWhereClauses();
             if (whereClauses.Count > 0)
@@ -827,7 +827,7 @@ namespace Durable.SqlServer
                 sql.Append(aggregateFunction);
             }
 
-            sql.Append($" FROM {_Sanitizer.SanitizeIdentifier(_Repository._TableName)}");
+            sql.Append($" FROM {_Repository._QualifiedTableName}");
 
             List<string> whereClauses = _QueryBuilder.GetWhereClauses();
             if (predicate != null)

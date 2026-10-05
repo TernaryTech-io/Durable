@@ -104,6 +104,8 @@ namespace Durable.SqlServer
 
         internal readonly IConnectionFactory _ConnectionFactory;
         internal readonly string _TableName;
+        internal readonly string? _Schema;
+        internal readonly string _QualifiedTableName;
         internal readonly string _PrimaryKeyColumn;
         internal readonly PropertyInfo _PrimaryKeyProperty;
         internal readonly Dictionary<string, PropertyInfo> _ColumnMappings;
@@ -149,6 +151,8 @@ namespace Durable.SqlServer
             _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
             _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
+            _Schema = _MetadataProvider.GetEntityMetadata(typeof(T)).Schema;
+            _QualifiedTableName = _Sanitizer.SanitizeTableName(_TableName, _Schema);
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
             _PrimaryKeyProperty = primaryKeyInfo.Property;
@@ -184,6 +188,8 @@ namespace Durable.SqlServer
             _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
             _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
+            _Schema = _MetadataProvider.GetEntityMetadata(typeof(T)).Schema;
+            _QualifiedTableName = _Sanitizer.SanitizeTableName(_TableName, _Schema);
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
             _PrimaryKeyProperty = primaryKeyInfo.Property;
@@ -218,6 +224,8 @@ namespace Durable.SqlServer
             _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
             _DataTypeConverter = dataTypeConverter ?? new SqlServerDataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
+            _Schema = _MetadataProvider.GetEntityMetadata(typeof(T)).Schema;
+            _QualifiedTableName = _Sanitizer.SanitizeTableName(_TableName, _Schema);
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
             _PrimaryKeyProperty = primaryKeyInfo.Property;
@@ -702,7 +710,7 @@ namespace Durable.SqlServer
                 values.Add(_Sanitizer.FormatValue(value!, property));
             }
 
-            string sql = $"INSERT INTO [{_TableName}] ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)})";
+            string sql = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)})";
             return sql;
         }
 
@@ -1253,7 +1261,7 @@ namespace Durable.SqlServer
             // Use ambient transaction if no explicit transaction provided
             transaction ??= TransactionScope.Current?.Transaction;
 
-            string sql = $"SELECT COUNT(*) FROM [{_TableName}]";
+            string sql = $"SELECT COUNT(*) FROM {_QualifiedTableName}";
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
             if (predicate != null)
@@ -1299,7 +1307,7 @@ namespace Durable.SqlServer
             // Use ambient transaction if no explicit transaction provided
             transaction ??= TransactionScope.Current?.Transaction;
 
-            string sql = $"SELECT COUNT(*) FROM [{_TableName}]";
+            string sql = $"SELECT COUNT(*) FROM {_QualifiedTableName}";
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
             if (predicate != null)
@@ -1348,7 +1356,7 @@ namespace Durable.SqlServer
             SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM [{_TableName}]");
+            StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM {_QualifiedTableName}");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1399,7 +1407,7 @@ namespace Durable.SqlServer
             SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM [{_TableName}]");
+            StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM {_QualifiedTableName}");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1450,7 +1458,7 @@ namespace Durable.SqlServer
             string column = parser.GetColumnFromExpression(selector.Body);
 
             // SQL Server doesn't need explicit casting like SQLite, AVG function works with numeric types
-            StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM [{_TableName}]");
+            StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM {_QualifiedTableName}");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1500,7 +1508,7 @@ namespace Durable.SqlServer
             SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM [{_TableName}]");
+            StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM {_QualifiedTableName}");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1555,7 +1563,7 @@ namespace Durable.SqlServer
             SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM [{_TableName}]");
+            StringBuilder sql = new StringBuilder($"SELECT MAX({column}) FROM {_QualifiedTableName}");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1610,7 +1618,7 @@ namespace Durable.SqlServer
             SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM [{_TableName}]");
+            StringBuilder sql = new StringBuilder($"SELECT MIN({column}) FROM {_QualifiedTableName}");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1664,7 +1672,7 @@ namespace Durable.SqlServer
             SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM [{_TableName}]");
+            StringBuilder sql = new StringBuilder($"SELECT COALESCE(AVG({column}), 0) FROM {_QualifiedTableName}");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1718,7 +1726,7 @@ namespace Durable.SqlServer
             SqlServerExpressionParser<T> parser = new SqlServerExpressionParser<T>(_ColumnMappings, _Sanitizer, _MetadataProvider, _DataTypeConverter);
             string column = parser.GetColumnFromExpression(selector.Body);
 
-            StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM [{_TableName}]");
+            StringBuilder sql = new StringBuilder($"SELECT COALESCE(SUM({column}), 0) FROM {_QualifiedTableName}");
 
             List<(string name, object? value)> parameters = new List<(string, object?)>();
 
@@ -1804,7 +1812,7 @@ namespace Durable.SqlServer
                 parameters.Add(($"@{columnName}", _DataTypeConverter.ConvertToDatabase(value!, property.PropertyType, property)!));
             }
 
-            string insertSql = $"INSERT INTO [{_TableName}] ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.name))})";
+            string insertSql = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.name))})";
 
             // Check if we have an auto-increment primary key
             PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
@@ -1962,7 +1970,7 @@ namespace Durable.SqlServer
                 parameters.Add(($"@{columnName}", _DataTypeConverter.ConvertToDatabase(value!, property.PropertyType, property)!));
             }
 
-            string insertSql = $"INSERT INTO [{_TableName}] ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.name))})";
+            string insertSql = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters.Select(p => p.name))})";
 
             // Check if we have an auto-increment primary key
             PropertyAttribute? pkAttr = _MetadataProvider.GetColumn(_PrimaryKeyProperty);
@@ -2118,12 +2126,12 @@ namespace Durable.SqlServer
             string sql;
             if (_VersionColumnInfo != null)
             {
-                sql = $"UPDATE [{_TableName}] SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @current_version";
+                sql = $"UPDATE {_QualifiedTableName} SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @current_version";
                 parameters.Add(("@current_version", currentVersion));
             }
             else
             {
-                sql = $"UPDATE [{_TableName}] SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id";
+                sql = $"UPDATE {_QualifiedTableName} SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id";
             }
 
             int rowsAffected;
@@ -2268,7 +2276,7 @@ namespace Durable.SqlServer
             string columnName = parser.GetColumnFromExpression(field.Body);
 
             // Build UPDATE SQL
-            string sql = $"UPDATE [{_TableName}] SET {columnName} = @value WHERE {whereClause}";
+            string sql = $"UPDATE {_QualifiedTableName} SET {columnName} = @value WHERE {whereClause}";
 
             // Convert value to database format
             PropertyInfo? fieldProperty = GetPropertyFromExpression(field.Body);
@@ -2354,12 +2362,12 @@ namespace Durable.SqlServer
             string sql;
             if (_VersionColumnInfo != null)
             {
-                sql = $"UPDATE [{_TableName}] SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @current_version";
+                sql = $"UPDATE {_QualifiedTableName} SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @current_version";
                 parameters.Add(("@current_version", currentVersion));
             }
             else
             {
-                sql = $"UPDATE [{_TableName}] SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id";
+                sql = $"UPDATE {_QualifiedTableName} SET {string.Join(", ", setPairs)} WHERE [{_PrimaryKeyColumn}] = @id";
             }
 
             int rowsAffected;
@@ -2513,7 +2521,7 @@ namespace Durable.SqlServer
             string columnName = parser.GetColumnFromExpression(field.Body);
 
             // Build UPDATE SQL
-            string sql = $"UPDATE [{_TableName}] SET {columnName} = @value WHERE {whereClause}";
+            string sql = $"UPDATE {_QualifiedTableName} SET {columnName} = @value WHERE {whereClause}";
 
             // Convert value to database format
             PropertyInfo? fieldProperty = GetPropertyFromExpression(field.Body);
@@ -2596,7 +2604,7 @@ namespace Durable.SqlServer
             List<(string name, object? value)> parameters = parser.GetParameters();
 
             // Build DELETE SQL
-            string sql = $"DELETE FROM [{_TableName}] WHERE {whereClause}";
+            string sql = $"DELETE FROM {_QualifiedTableName} WHERE {whereClause}";
 
             int rowsAffected;
             if (transaction != null)
@@ -2683,7 +2691,7 @@ namespace Durable.SqlServer
             List<(string name, object? value)> parameters = parser.GetParameters();
 
             // Build DELETE SQL
-            string sql = $"DELETE FROM [{_TableName}] WHERE {whereClause}";
+            string sql = $"DELETE FROM {_QualifiedTableName} WHERE {whereClause}";
 
             int rowsAffected;
             if (transaction != null)
@@ -2727,7 +2735,7 @@ namespace Durable.SqlServer
             if (_VersionColumnInfo != null)
             {
                 object? version = _VersionColumnInfo.GetValue(entity);
-                string sql = $"DELETE FROM [{_TableName}] WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @version";
+                string sql = $"DELETE FROM {_QualifiedTableName} WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @version";
 
                 int rowsAffected;
                 if (transaction != null)
@@ -2786,7 +2794,7 @@ namespace Durable.SqlServer
             id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
 
-            string sql = $"DELETE FROM [{_TableName}] WHERE [{_PrimaryKeyColumn}] = @id";
+            string sql = $"DELETE FROM {_QualifiedTableName} WHERE [{_PrimaryKeyColumn}] = @id";
 
             if (transaction != null)
             {
@@ -2842,7 +2850,7 @@ namespace Durable.SqlServer
         /// <returns>The number of entities deleted.</returns>
         public int DeleteAll(ITransaction? transaction = null)
         {
-            string sql = $"DELETE FROM [{_TableName}]";
+            string sql = $"DELETE FROM {_QualifiedTableName}";
 
             if (transaction != null)
             {
@@ -2886,7 +2894,7 @@ namespace Durable.SqlServer
             if (_VersionColumnInfo != null)
             {
                 object? version = _VersionColumnInfo.GetValue(entity);
-                string sql = $"DELETE FROM [{_TableName}] WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @version";
+                string sql = $"DELETE FROM {_QualifiedTableName} WHERE [{_PrimaryKeyColumn}] = @id AND [{_VersionColumnInfo.ColumnName}] = @version";
 
                 int rowsAffected;
                 if (transaction != null)
@@ -2948,7 +2956,7 @@ namespace Durable.SqlServer
             if (id == null) throw new ArgumentNullException(nameof(id));
             token.ThrowIfCancellationRequested();
 
-            string sql = $"DELETE FROM [{_TableName}] WHERE [{_PrimaryKeyColumn}] = @id";
+            string sql = $"DELETE FROM {_QualifiedTableName} WHERE [{_PrimaryKeyColumn}] = @id";
 
             int rowsAffected;
             if (transaction != null)
@@ -3020,7 +3028,7 @@ namespace Durable.SqlServer
         {
             token.ThrowIfCancellationRequested();
 
-            string sql = $"DELETE FROM [{_TableName}]";
+            string sql = $"DELETE FROM {_QualifiedTableName}";
 
             int rowsAffected;
             if (transaction != null)
@@ -3126,7 +3134,7 @@ namespace Durable.SqlServer
 
             // Build MERGE statement for SQL Server
             StringBuilder sql = new StringBuilder();
-            sql.Append($"MERGE [{_TableName}] AS target ");
+            sql.Append($"MERGE {_QualifiedTableName} AS target ");
             sql.Append($"USING (VALUES ({string.Join(", ", allParameters)})) AS source ({string.Join(", ", allColumns)}) ");
             sql.Append($"ON target.[{_PrimaryKeyColumn}] = source.[{_PrimaryKeyColumn}] ");
             sql.Append("WHEN MATCHED THEN ");
@@ -3328,7 +3336,7 @@ namespace Durable.SqlServer
 
             // Build MERGE statement for SQL Server
             StringBuilder sql = new StringBuilder();
-            sql.Append($"MERGE [{_TableName}] AS target ");
+            sql.Append($"MERGE {_QualifiedTableName} AS target ");
             sql.Append($"USING (VALUES ({string.Join(", ", allParameters)})) AS source ({string.Join(", ", allColumns)}) ");
             sql.Append($"ON target.[{_PrimaryKeyColumn}] = source.[{_PrimaryKeyColumn}] ");
             sql.Append("WHEN MATCHED THEN ");
@@ -4115,11 +4123,11 @@ namespace Durable.SqlServer
             {
                 string pkColumn = _PrimaryKeyProperty!.Name;
                 // Use OUTPUT clause to get all generated IDs
-                command.CommandText = $"INSERT INTO [{_TableName}] ({string.Join(", ", sanitizedColumns)}) OUTPUT INSERTED.[{pkColumn}] VALUES {string.Join(", ", valuesList)}";
+                command.CommandText = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", sanitizedColumns)}) OUTPUT INSERTED.[{pkColumn}] VALUES {string.Join(", ", valuesList)}";
             }
             else
             {
-                command.CommandText = $"INSERT INTO [{_TableName}] ({string.Join(", ", sanitizedColumns)}) VALUES {string.Join(", ", valuesList)}";
+                command.CommandText = $"INSERT INTO {_QualifiedTableName} ({string.Join(", ", sanitizedColumns)}) VALUES {string.Join(", ", valuesList)}";
             }
 
             AddParametersForBatch(command, entities);
@@ -5053,7 +5061,7 @@ namespace Durable.SqlServer
             if (string.IsNullOrWhiteSpace(indexName))
                 throw new ArgumentException("Index name cannot be null or empty", nameof(indexName));
 
-            string sql = $"DROP INDEX IF EXISTS {_Sanitizer.SanitizeIdentifier(indexName)} ON {_Sanitizer.SanitizeIdentifier(_TableName)}";
+            string sql = $"DROP INDEX IF EXISTS {_Sanitizer.SanitizeIdentifier(indexName)} ON {_QualifiedTableName}";
 
             if (_CaptureSql)
             {
@@ -5094,7 +5102,7 @@ namespace Durable.SqlServer
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            string sql = $"DROP INDEX IF EXISTS {_Sanitizer.SanitizeIdentifier(indexName)} ON {_Sanitizer.SanitizeIdentifier(_TableName)}";
+            string sql = $"DROP INDEX IF EXISTS {_Sanitizer.SanitizeIdentifier(indexName)} ON {_QualifiedTableName}";
 
             if (_CaptureSql)
             {

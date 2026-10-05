@@ -317,11 +317,11 @@ namespace Durable.SqlServer
             }
             else if (_WindowFunctions.Count > 0 || _CaseExpressions.Count > 0 || _IncludePaths.Count > 0)
             {
-                sqlParts.Add($"FROM [{_Repository._TableName}] t0");
+                sqlParts.Add($"FROM {_Repository._QualifiedTableName} t0");
             }
             else
             {
-                sqlParts.Add($"FROM [{_Repository._TableName}]");
+                sqlParts.Add($"FROM {_Repository._QualifiedTableName}");
             }
 
             // JOIN clauses (includes and custom joins)
@@ -1619,7 +1619,7 @@ namespace Durable.SqlServer
             List<string> sqlParts = new List<string>();
 
             sqlParts.Add("SELECT COUNT(*)");
-            sqlParts.Add($"FROM [{_Repository._TableName}]");
+            sqlParts.Add($"FROM {_Repository._QualifiedTableName}");
 
             if (_WhereClauses.Any())
             {
@@ -1634,7 +1634,7 @@ namespace Durable.SqlServer
             List<string> sqlParts = new List<string>();
 
             sqlParts.Add($"SELECT {function}({column})");
-            sqlParts.Add($"FROM [{_Repository._TableName}]");
+            sqlParts.Add($"FROM {_Repository._QualifiedTableName}");
 
             if (_WhereClauses.Any())
             {
@@ -1648,7 +1648,7 @@ namespace Durable.SqlServer
         {
             List<string> sqlParts = new List<string>();
 
-            sqlParts.Add($"DELETE FROM [{_Repository._TableName}]");
+            sqlParts.Add($"DELETE FROM {_Repository._QualifiedTableName}");
 
             if (_WhereClauses.Any())
             {

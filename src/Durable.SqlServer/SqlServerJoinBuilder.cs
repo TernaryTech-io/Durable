@@ -204,7 +204,7 @@ namespace Durable.SqlServer
             Dictionary<string, List<SqlServerColumnMapping>> columnMappingsByAlias,
             Type baseEntityType)
         {
-            string sanitizedRelatedTable = _Sanitizer.SanitizeIdentifier(include.RelatedTableName);
+            string sanitizedRelatedTable = _Sanitizer.SanitizeTableName(include.RelatedTableName, include.RelatedSchema);
             string sanitizedJoinAlias = _Sanitizer.SanitizeIdentifier(include.JoinAlias);
 
             // Add columns to SELECT clause with explicit aliases
@@ -276,9 +276,9 @@ namespace Durable.SqlServer
                 throw new InvalidOperationException($"Many-to-many relationship for {include.PropertyPath} requires junction table information");
             }
 
-            string sanitizedJunctionTable = _Sanitizer.SanitizeIdentifier(include.JunctionTableName);
+            string sanitizedJunctionTable = _Sanitizer.SanitizeTableName(include.JunctionTableName, include.JunctionSchema);
             string sanitizedJunctionAlias = _Sanitizer.SanitizeIdentifier(include.JunctionAlias);
-            string sanitizedRelatedTable = _Sanitizer.SanitizeIdentifier(include.RelatedTableName);
+            string sanitizedRelatedTable = _Sanitizer.SanitizeTableName(include.RelatedTableName, include.RelatedSchema);
             string sanitizedJoinAlias = _Sanitizer.SanitizeIdentifier(include.JoinAlias);
 
             // Add columns to SELECT clause

@@ -198,12 +198,12 @@ namespace Durable.SqlServer
             if (primaryKeyValues.Count == 0) return;
 
             // Build SQL to load related entities
-            string relatedTableName = include.RelatedTableName;
+            string relatedTableName = _Sanitizer.SanitizeTableName(include.RelatedTableName, include.RelatedSchema);
             string foreignKeyColumn = GetColumnName(include.ForeignKeyProperty);
             string primaryKeyColumn = GetColumnName(primaryKeyProperty);
 
             StringBuilder sql = new StringBuilder();
-            sql.Append($"SELECT * FROM [{relatedTableName}] WHERE [{foreignKeyColumn}] IN (");
+            sql.Append($"SELECT * FROM {relatedTableName} WHERE [{foreignKeyColumn}] IN (");
 
             List<string> paramNames = new List<string>();
             for (int i = 0; i < primaryKeyValues.Count; i++)
@@ -291,8 +291,8 @@ namespace Durable.SqlServer
             if (primaryKeyValues.Count == 0) return;
 
             // Build SQL for many-to-many join
-            string junctionTableName = include.JunctionTableName;
-            string relatedTableName = include.RelatedTableName;
+            string junctionTableName = _Sanitizer.SanitizeTableName(include.JunctionTableName, include.JunctionSchema);
+            string relatedTableName = _Sanitizer.SanitizeTableName(include.RelatedTableName, include.RelatedSchema);
             string primaryKeyColumn = GetColumnName(primaryKeyProperty);
 
             // Assume junction table has columns named after the entity tables
@@ -301,8 +301,8 @@ namespace Durable.SqlServer
             string relatedPrimaryKeyColumn = "id"; // Assume standard primary key naming
 
             StringBuilder sql = new StringBuilder();
-            sql.Append($"SELECT r.* FROM [{relatedTableName}] r ");
-            sql.Append($"INNER JOIN [{junctionTableName}] j ON r.[{relatedPrimaryKeyColumn}] = j.[{relatedForeignKeyColumn}] ");
+            sql.Append($"SELECT r.* FROM {relatedTableName} r ");
+            sql.Append($"INNER JOIN {junctionTableName} j ON r.[{relatedPrimaryKeyColumn}] = j.[{relatedForeignKeyColumn}] ");
             sql.Append($"WHERE j.[{parentForeignKeyColumn}] IN (");
 
             List<string> paramNames = new List<string>();
@@ -372,11 +372,11 @@ namespace Durable.SqlServer
             if (primaryKeyValues.Count == 0) return;
 
             // Build SQL to load related entities
-            string relatedTableName = include.RelatedTableName;
+            string relatedTableName = _Sanitizer.SanitizeTableName(include.RelatedTableName, include.RelatedSchema);
             string foreignKeyColumn = GetColumnName(include.ForeignKeyProperty);
 
             StringBuilder sql = new StringBuilder();
-            sql.Append($"SELECT * FROM [{relatedTableName}] WHERE [{foreignKeyColumn}] IN (");
+            sql.Append($"SELECT * FROM {relatedTableName} WHERE [{foreignKeyColumn}] IN (");
 
             List<string> paramNames = new List<string>();
             for (int i = 0; i < primaryKeyValues.Count; i++)

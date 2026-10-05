@@ -191,6 +191,7 @@ namespace Durable.SqlServer
                 NavigationProperty = navigationProperty,
                 RelatedEntityType = relatedEntityType,
                 RelatedTableName = GetTableName(relatedEntityType),
+                RelatedSchema = _MetadataProvider.GetEntityMetadata(relatedEntityType).Schema,
                 JoinAlias = GenerateAlias(),
                 Parent = parent,
                 IsCollection = isCollection
@@ -226,6 +227,7 @@ namespace Durable.SqlServer
                 if (manyToManyAttr.JunctionEntityType != null)
                 {
                     includeInfo.JunctionTableName = GetTableName(manyToManyAttr.JunctionEntityType);
+                    includeInfo.JunctionSchema = _MetadataProvider.GetEntityMetadata(manyToManyAttr.JunctionEntityType).Schema;
                     includeInfo.JunctionAlias = GenerateAlias();
                 }
             }

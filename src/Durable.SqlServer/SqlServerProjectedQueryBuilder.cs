@@ -916,7 +916,7 @@ namespace Durable.SqlServer
             sql.Append(string.Join(", ", selectColumns));
 
             // FROM clause
-            sql.Append($" FROM [{_Repository._TableName}]");
+            sql.Append($" FROM {_Repository._QualifiedTableName}");
 
             // WHERE clause
             if (_WhereClauses.Count > 0)
