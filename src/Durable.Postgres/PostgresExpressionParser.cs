@@ -304,6 +304,18 @@ namespace Durable.Postgres
                     left = VisitWithPrecedence(binary.Left, binary.NodeType, true);
                 }
             }
+            // Enum properties stored as text (Flags.String): C# compiles enum comparisons to their
+            // underlying integer type, so format the compared value as the enum member name instead
+            else if (TryGetStringEnumType(binary.Left, out Type? leftEnumType) && !ContainsParameterReference(binary.Right))
+            {
+                left = VisitWithPrecedence(binary.Left, binary.NodeType, true);
+                right = FormatEnumName(leftEnumType!, binary.Right);
+            }
+            else if (TryGetStringEnumType(binary.Right, out Type? rightEnumType) && !ContainsParameterReference(binary.Left))
+            {
+                left = FormatEnumName(rightEnumType!, binary.Left);
+                right = VisitWithPrecedence(binary.Right, binary.NodeType, false);
+            }
             else
             {
                 // Normal processing
@@ -1039,6 +1051,40 @@ namespace Durable.Postgres
             }
 
             throw new NotSupportedException($"Substring method requires 1 or 2 arguments");
+        }
+
+        private bool TryGetStringEnumType(Expression expression, out Type? enumType)
+        {
+            enumType = null;
+            while (expression is UnaryExpression unary && (unary.NodeType == ExpressionType.Convert || unary.NodeType == ExpressionType.ConvertChecked))
+            {
+                expression = unary.Operand;
+            }
+
+            if (expression is not MemberExpression member ||
+                member.Expression is not ParameterExpression ||
+                member.Member is not PropertyInfo property)
+            {
+                return false;
+            }
+
+            Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            if (!type.IsEnum || _MetadataProvider.GetColumn(property)?.PropertyFlags.HasFlag(Flags.String) != true)
+            {
+                return false;
+            }
+
+            enumType = type;
+            return true;
+        }
+
+        private string FormatEnumName(Type enumType, Expression valueExpression)
+        {
+            object? value = GetConstantValue(valueExpression);
+            if (value == null)
+                return FormatValue(null);
+
+            return FormatValue(Enum.ToObject(enumType, value).ToString());
         }
 
         private object? GetConstantValue(Expression expression)
