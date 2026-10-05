@@ -321,7 +321,6 @@ namespace Durable.MySql
         /// <returns>The entity with the specified identifier.</returns>
         public T? ReadById(object id, ITransaction? transaction = null)
         {
-            id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
             return Query(transaction).Where(BuildIdPredicate(id)).Execute().FirstOrDefault();
         }
@@ -1099,7 +1098,6 @@ namespace Durable.MySql
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
         public async Task<T?> ReadByIdAsync(object id, ITransaction? transaction = null, CancellationToken token = default)
         {
-            id = ConvertPrimaryKeyValue(id)!;
             if (id == null)
                 throw new ArgumentNullException(nameof(id));
 
@@ -1129,7 +1127,6 @@ namespace Durable.MySql
         /// <exception cref="ArgumentNullException">Thrown when id is null.</exception>
         public bool ExistsById(object id, ITransaction? transaction = null)
         {
-            id = ConvertPrimaryKeyValue(id)!;
             if (id == null) throw new ArgumentNullException(nameof(id));
             return Query(transaction).Where(BuildIdPredicate(id)).Take(1).Execute().Any();
         }
@@ -1165,7 +1162,6 @@ namespace Durable.MySql
         /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled</exception>
         public async Task<bool> ExistsByIdAsync(object id, ITransaction? transaction = null, CancellationToken token = default)
         {
-            id = ConvertPrimaryKeyValue(id)!;
             if (id == null)
                 throw new ArgumentNullException(nameof(id));
 
