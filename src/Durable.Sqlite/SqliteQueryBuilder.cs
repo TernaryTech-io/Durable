@@ -60,7 +60,7 @@
         {
             _Repository = repository;
             _Transaction = transaction;
-            _JoinBuilder = new JoinBuilder(_Repository._Sanitizer);
+            _JoinBuilder = new JoinBuilder(_Repository._Sanitizer, _Repository._MetadataProvider);
         }
 
         #endregion
@@ -552,9 +552,10 @@
                     // Use EntityMapper for joined results
                     EntityMapper<TEntity> mapper = new EntityMapper<TEntity>(
                         _Repository._DataTypeConverter,
-                        _Repository._ColumnMappings);
+                        _Repository._ColumnMappings,
+                        _Repository._MetadataProvider);
                     
-                    IncludeProcessor processor = new IncludeProcessor(_Repository._Sanitizer);
+                    IncludeProcessor processor = new IncludeProcessor(_Repository._Sanitizer, _Repository._MetadataProvider);
                     List<IncludeInfo> includeInfos = processor.ParseIncludes<TEntity>(_Includes);
                     
                     results = mapper.MapJoinedResults(reader, GetOrBuildJoinResult(), includeInfos);
@@ -562,7 +563,8 @@
                     // Load collections if needed
                     CollectionLoader<TEntity> collectionLoader = new CollectionLoader<TEntity>(
                         _Repository._Sanitizer,
-                        _Repository._DataTypeConverter);
+                        _Repository._DataTypeConverter,
+                        _Repository._MetadataProvider);
                     collectionLoader.LoadCollections(results, includeInfos, connectionResult.Connection, _Transaction);
                 }
                 else
@@ -611,9 +613,10 @@
                     // Use EntityMapper for joined results
                     EntityMapper<TEntity> mapper = new EntityMapper<TEntity>(
                         _Repository._DataTypeConverter,
-                        _Repository._ColumnMappings);
+                        _Repository._ColumnMappings,
+                        _Repository._MetadataProvider);
                     
-                    IncludeProcessor processor = new IncludeProcessor(_Repository._Sanitizer);
+                    IncludeProcessor processor = new IncludeProcessor(_Repository._Sanitizer, _Repository._MetadataProvider);
                     List<IncludeInfo> includeInfos = processor.ParseIncludes<TEntity>(_Includes);
                     
                     // Read all results into memory for joined processing
@@ -634,7 +637,8 @@
                     // Load collections if needed
                     CollectionLoader<TEntity> collectionLoader = new CollectionLoader<TEntity>(
                         _Repository._Sanitizer,
-                        _Repository._DataTypeConverter);
+                        _Repository._DataTypeConverter,
+                        _Repository._MetadataProvider);
                     collectionLoader.LoadCollections(results, includeInfos, connectionResult.Connection, _Transaction);
                 }
                 else
@@ -1384,7 +1388,7 @@
             object entity = Activator.CreateInstance(includeInfo.RelatedEntityType);
             bool hasValue = false;
 
-            IncludeProcessor processor = new IncludeProcessor(_Repository._Sanitizer);
+            IncludeProcessor processor = new IncludeProcessor(_Repository._Sanitizer, _Repository._MetadataProvider);
             Dictionary<string, PropertyInfo> columnMappings = processor.GetColumnMappings(includeInfo.RelatedEntityType);
 
             foreach (KeyValuePair<string, PropertyInfo> kvp in columnMappings)

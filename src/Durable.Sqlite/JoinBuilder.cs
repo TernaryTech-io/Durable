@@ -5,6 +5,7 @@ namespace Durable.Sqlite
     using System.Linq;
     using System.Reflection;
     using System.Text;
+    using Durable.Metadata;
 
     /// <summary>
     /// Builds SQL JOIN clauses and manages column mappings for SQLite Include operations.
@@ -12,6 +13,8 @@ namespace Durable.Sqlite
     /// </summary>
     internal class JoinBuilder
     {
+        private readonly IEntityMetadataProvider _MetadataProvider;
+
         #region Public-Members
 
         #endregion
@@ -29,11 +32,13 @@ namespace Durable.Sqlite
         /// Initializes a new instance of the JoinBuilder class.
         /// </summary>
         /// <param name="sanitizer">The sanitizer to use for SQL identifiers</param>
+        /// <param name="metadataProvider">The entity metadata provider.</param>
         /// <exception cref="ArgumentNullException">Thrown when sanitizer is null</exception>
-        public JoinBuilder(ISanitizer sanitizer)
+        public JoinBuilder(ISanitizer sanitizer, IEntityMetadataProvider metadataProvider)
         {
+            _MetadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
             _Sanitizer = sanitizer;
-            _IncludeProcessor = new IncludeProcessor(sanitizer);
+            _IncludeProcessor = new IncludeProcessor(sanitizer, metadataProvider);
         }
 
         #endregion
@@ -204,8 +209,8 @@ namespace Durable.Sqlite
                 else
                 {
                     // Handle regular one-to-one relationships
-                    ForeignKeyAttribute fkAttr = include.ForeignKeyProperty.GetCustomAttribute<ForeignKeyAttribute>();
-                    PropertyAttribute fkPropAttr = include.ForeignKeyProperty.GetCustomAttribute<PropertyAttribute>();
+                    ForeignKeyAttribute fkAttr = _MetadataProvider.GetForeignKey(include.ForeignKeyProperty);
+                    PropertyAttribute fkPropAttr = _MetadataProvider.GetColumn(include.ForeignKeyProperty);
                     string fkColumnName = fkPropAttr?.Name ?? include.ForeignKeyProperty.Name;
 
                     Dictionary<string, PropertyInfo> relatedColumns = _IncludeProcessor.GetColumnMappings(include.RelatedEntityType);
@@ -252,7 +257,7 @@ namespace Durable.Sqlite
         {
             foreach (PropertyInfo prop in entityType.GetProperties())
             {
-                PropertyAttribute attr = prop.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute attr = _MetadataProvider.GetColumn(prop);
                 if (attr != null && (attr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey)
                 {
                     return attr.Name;
@@ -263,7 +268,7 @@ namespace Durable.Sqlite
 
         private string GetJunctionForeignKeyColumn(IncludeInfo include, bool forThisEntity)
         {
-            ManyToManyNavigationPropertyAttribute m2mAttr = include.NavigationProperty.GetCustomAttribute<ManyToManyNavigationPropertyAttribute>();
+            ManyToManyNavigationPropertyAttribute m2mAttr = _MetadataProvider.GetManyToMany(include.NavigationProperty);
             if (m2mAttr == null)
             {
                 throw new InvalidOperationException($"ManyToManyNavigationPropertyAttribute not found for {include.PropertyPath}");
@@ -278,7 +283,7 @@ namespace Durable.Sqlite
                 {
                     throw new InvalidOperationException($"Junction foreign key property '{m2mAttr.ThisEntityForeignKeyProperty}' not found");
                 }
-                PropertyAttribute propAttr = fkProp.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute propAttr = _MetadataProvider.GetColumn(fkProp);
                 return propAttr?.Name ?? fkProp.Name;
             }
             else
@@ -290,7 +295,7 @@ namespace Durable.Sqlite
                 {
                     throw new InvalidOperationException($"Junction foreign key property '{m2mAttr.RelatedEntityForeignKeyProperty}' not found");
                 }
-                PropertyAttribute propAttr = fkProp.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute propAttr = _MetadataProvider.GetColumn(fkProp);
                 return propAttr?.Name ?? fkProp.Name;
             }
         }

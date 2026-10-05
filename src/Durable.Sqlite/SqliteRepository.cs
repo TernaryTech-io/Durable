@@ -13,6 +13,7 @@
     using System.Threading.Tasks;
     using Microsoft.Data.Sqlite;
     using Durable.ConcurrencyConflictResolvers;
+    using Durable.Metadata;
 
     /// <summary>
     /// SQLite Repository Implementation with Full Transaction Support and Connection Pooling.
@@ -86,6 +87,7 @@
         internal readonly IBatchInsertConfiguration _BatchConfig;
         internal readonly ISanitizer _Sanitizer;
         internal readonly IDataTypeConverter _DataTypeConverter;
+        internal readonly IEntityMetadataProvider _MetadataProvider;
         internal readonly VersionColumnInfo _VersionColumnInfo;
         internal readonly IConcurrencyConflictResolver<T> _ConflictResolver;
         internal readonly IChangeTracker<T> _ChangeTracker;
@@ -108,15 +110,17 @@
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
+        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when connectionString is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
-        public SqliteRepository(string connectionString, IBatchInsertConfiguration batchConfig = null, IDataTypeConverter dataTypeConverter = null, IConcurrencyConflictResolver<T> conflictResolver = null)
+        public SqliteRepository(string connectionString, IBatchInsertConfiguration batchConfig = null, IDataTypeConverter dataTypeConverter = null, IConcurrencyConflictResolver<T> conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
         {
             ArgumentNullException.ThrowIfNull(connectionString);
             Settings = SqliteRepositorySettings.Parse(connectionString);
             _ConnectionFactory = new SqliteConnectionFactory(connectionString);
             _Sanitizer = new SqliteSanitizer();
-            _DataTypeConverter = dataTypeConverter ?? new DataTypeConverter();
+            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
+            _DataTypeConverter = dataTypeConverter ?? new DataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -139,16 +143,18 @@
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
+        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when settings is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key), or when settings are invalid.</exception>
-        public SqliteRepository(SqliteRepositorySettings settings, IBatchInsertConfiguration batchConfig = null, IDataTypeConverter dataTypeConverter = null, IConcurrencyConflictResolver<T> conflictResolver = null)
+        public SqliteRepository(SqliteRepositorySettings settings, IBatchInsertConfiguration batchConfig = null, IDataTypeConverter dataTypeConverter = null, IConcurrencyConflictResolver<T> conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
         {
             ArgumentNullException.ThrowIfNull(settings);
             Settings = settings;
             string connectionString = settings.BuildConnectionString();
             _ConnectionFactory = new SqliteConnectionFactory(connectionString);
             _Sanitizer = new SqliteSanitizer();
-            _DataTypeConverter = dataTypeConverter ?? new DataTypeConverter();
+            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
+            _DataTypeConverter = dataTypeConverter ?? new DataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -172,14 +178,16 @@
         /// <param name="batchConfig">Optional batch insert configuration settings. Uses default settings if null.</param>
         /// <param name="dataTypeConverter">Optional data type converter for custom type handling. Uses default converter if null.</param>
         /// <param name="conflictResolver">Optional concurrency conflict resolver. Uses default resolver with ThrowException strategy if null.</param>
+        /// <param name="metadataProvider">Optional entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when connectionFactory is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when the entity type T lacks required attributes (Entity, primary key).</exception>
-        public SqliteRepository(IConnectionFactory connectionFactory, IBatchInsertConfiguration batchConfig = null, IDataTypeConverter dataTypeConverter = null, IConcurrencyConflictResolver<T> conflictResolver = null)
+        public SqliteRepository(IConnectionFactory connectionFactory, IBatchInsertConfiguration batchConfig = null, IDataTypeConverter dataTypeConverter = null, IConcurrencyConflictResolver<T> conflictResolver = null, IEntityMetadataProvider? metadataProvider = null)
         {
             _ConnectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
             Settings = null!;
             _Sanitizer = new SqliteSanitizer();
-            _DataTypeConverter = dataTypeConverter ?? new DataTypeConverter();
+            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
+            _DataTypeConverter = dataTypeConverter ?? new DataTypeConverter(_MetadataProvider);
             _TableName = GetEntityName();
             PrimaryKeyInfo primaryKeyInfo = GetPrimaryKeyInfo();
             _PrimaryKeyColumn = primaryKeyInfo.ColumnName;
@@ -1302,7 +1310,7 @@
                 {
                     string columnName = kvp.Key;
                     PropertyInfo property = kvp.Value;
-                    PropertyAttribute columnAttr = property.GetCustomAttribute<PropertyAttribute>();
+                    PropertyAttribute columnAttr = _MetadataProvider.GetColumn(property);
 
                     // Skip auto-increment primary keys
                     if (columnAttr != null &&
@@ -1387,7 +1395,7 @@
                 {
                     string columnName = kvp.Key;
                     PropertyInfo property = kvp.Value;
-                    PropertyAttribute columnAttr = property.GetCustomAttribute<PropertyAttribute>();
+                    PropertyAttribute columnAttr = _MetadataProvider.GetColumn(property);
 
                     // Skip auto-increment primary keys
                     if (columnAttr != null &&
@@ -2653,7 +2661,7 @@
         /// <exception cref="InvalidOperationException">Thrown when the entity type does not have an Entity attribute.</exception>
         public string GetEntityName()
         {
-            EntityAttribute entityAttr = typeof(T).GetCustomAttribute<EntityAttribute>();
+            EntityAttribute entityAttr = _MetadataProvider.GetEntity(typeof(T));
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type {typeof(T).Name} must have an Entity attribute");
             return entityAttr.Name;
@@ -2668,7 +2676,7 @@
         {
             foreach (PropertyInfo prop in typeof(T).GetProperties())
             {
-                PropertyAttribute attr = prop.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute attr = _MetadataProvider.GetColumn(prop);
                 if (attr != null && (attr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey)
                 {
                     return new PrimaryKeyInfo(attr.Name, prop);
@@ -2688,7 +2696,7 @@
 
             foreach (PropertyInfo prop in typeof(T).GetProperties())
             {
-                PropertyAttribute attr = prop.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute attr = _MetadataProvider.GetColumn(prop);
                 if (attr != null)
                 {
                     mappings[attr.Name] = prop;
@@ -2708,7 +2716,7 @@
 
             foreach (PropertyInfo prop in typeof(T).GetProperties())
             {
-                ForeignKeyAttribute fkAttr = prop.GetCustomAttribute<ForeignKeyAttribute>();
+                ForeignKeyAttribute fkAttr = _MetadataProvider.GetForeignKey(prop);
                 if (fkAttr != null)
                 {
                     foreignKeys[prop] = fkAttr;
@@ -2728,7 +2736,7 @@
 
             foreach (PropertyInfo prop in typeof(T).GetProperties())
             {
-                NavigationPropertyAttribute navAttr = prop.GetCustomAttribute<NavigationPropertyAttribute>();
+                NavigationPropertyAttribute navAttr = _MetadataProvider.GetNavigation(prop);
                 if (navAttr != null)
                 {
                     navProps[prop] = navAttr;
@@ -2746,10 +2754,10 @@
         {
             foreach (PropertyInfo prop in typeof(T).GetProperties())
             {
-                VersionColumnAttribute versionAttr = prop.GetCustomAttribute<VersionColumnAttribute>();
+                VersionColumnAttribute versionAttr = _MetadataProvider.GetVersionColumn(prop);
                 if (versionAttr != null)
                 {
-                    PropertyAttribute propAttr = prop.GetCustomAttribute<PropertyAttribute>();
+                    PropertyAttribute propAttr = _MetadataProvider.GetColumn(prop);
                     if (propAttr == null)
                     {
                         throw new InvalidOperationException(
@@ -2780,7 +2788,7 @@
 
             foreach (PropertyInfo prop in typeof(T).GetProperties())
             {
-                DefaultValueAttribute? attr = prop.GetCustomAttribute<DefaultValueAttribute>();
+                DefaultValueAttribute? attr = _MetadataProvider.GetDefaultValue(prop);
                 if (attr == null)
                     continue;
 
@@ -3098,7 +3106,7 @@
             {
                 string columnName = kvp.Key;
                 PropertyInfo property = kvp.Value;
-                PropertyAttribute columnAttr = property.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute columnAttr = _MetadataProvider.GetColumn(property);
 
                 if (columnAttr != null &&
                     (columnAttr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey &&
@@ -3287,7 +3295,7 @@
             try
             {
                 // Get table name
-                EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+                EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
                 string tableName = entityAttr!.Name; // Already validated in ValidateTable
 
                 // Check if table exists
@@ -3296,7 +3304,7 @@
                 if (!tableExists)
                 {
                     // Create the table
-                    SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter);
+                    SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
                     string createTableSql = schemaBuilder.BuildCreateTableSql(entityType);
 
                     result.Command.CommandText = createTableSql;
@@ -3312,7 +3320,7 @@
                     List<string> expectedColumnNames = new List<string>();
                     foreach (PropertyInfo prop in entityType.GetProperties())
                     {
-                        PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
+                        PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
                         if (propAttr != null)
                         {
                             expectedColumnNames.Add(propAttr.Name);
@@ -3372,7 +3380,7 @@
             try
             {
                 // Get table name
-                EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+                EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
                 string tableName = entityAttr!.Name;
 
                 // Check if table exists
@@ -3381,7 +3389,7 @@
                 if (!tableExists)
                 {
                     // Create the table
-                    SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter);
+                    SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
                     string createTableSql = schemaBuilder.BuildCreateTableSql(entityType);
 
                     result.Command.CommandText = createTableSql;
@@ -3397,7 +3405,7 @@
                     List<string> expectedColumnNames = new List<string>();
                     foreach (PropertyInfo prop in entityType.GetProperties())
                     {
-                        PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
+                        PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
                         if (propAttr != null)
                         {
                         expectedColumnNames.Add(propAttr.Name);
@@ -3537,7 +3545,7 @@
             bool isValid = true;
 
             // Check for Entity attribute
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null)
             {
                 errors.Add($"Type '{entityType.Name}' must have an Entity attribute");
@@ -3552,7 +3560,7 @@
             // Scan properties
             foreach (PropertyInfo prop in entityType.GetProperties())
             {
-                PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
                 if (propAttr == null)
                     continue;
 
@@ -3601,7 +3609,7 @@
                         // Check if entity columns exist in database
                         foreach (PropertyInfo prop in columnProperties)
                         {
-                            PropertyAttribute? propAttr = prop.GetCustomAttribute<PropertyAttribute>();
+                            PropertyAttribute? propAttr = _MetadataProvider.GetColumn(prop);
                             if (propAttr != null)
                             {
                                 if (!existingColumnNames.Contains(propAttr.Name, StringComparer.OrdinalIgnoreCase))
@@ -3614,7 +3622,7 @@
 
                         // Check for extra columns in database
                         List<string> entityColumnNames = columnProperties
-                            .Select(p => p.GetCustomAttribute<PropertyAttribute>()?.Name)
+                            .Select(p => _MetadataProvider.GetColumn(p)?.Name)
                             .Where(name => name != null)
                             .ToList()!;
 
@@ -3673,7 +3681,7 @@
         {
             ArgumentNullException.ThrowIfNull(entityType);
 
-            SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter);
+            SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
             List<string> indexSqlStatements = schemaBuilder.BuildCreateIndexSql(entityType);
 
             if (indexSqlStatements.Count == 0)
@@ -3718,7 +3726,7 @@
             ArgumentNullException.ThrowIfNull(entityType);
             cancellationToken.ThrowIfCancellationRequested();
 
-            SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter);
+            SqliteSchemaBuilder schemaBuilder = new SqliteSchemaBuilder(_Sanitizer, _DataTypeConverter, _MetadataProvider);
             List<string> indexSqlStatements = schemaBuilder.BuildCreateIndexSql(entityType);
 
             if (indexSqlStatements.Count == 0)
@@ -3834,7 +3842,7 @@
         {
             ArgumentNullException.ThrowIfNull(entityType);
 
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 
@@ -3859,7 +3867,7 @@
             ArgumentNullException.ThrowIfNull(entityType);
             cancellationToken.ThrowIfCancellationRequested();
 
-            EntityAttribute? entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute? entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null)
                 throw new InvalidOperationException($"Type '{entityType.Name}' must have an Entity attribute");
 

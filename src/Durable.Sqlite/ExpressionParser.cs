@@ -7,6 +7,7 @@
     using System.Reflection;
     using System.Text;
     using System.Threading.Tasks;
+    using Durable.Metadata;
     /// <summary>
     /// Parses and converts LINQ expressions to SQLite-compatible SQL strings.
     /// Provides support for complex expression trees including binary operations, method calls, and member access.
@@ -14,6 +15,8 @@
     /// <typeparam name="T">The entity type that the expressions operate on.</typeparam>
     public class ExpressionParser<T> where T : class
     {
+        private readonly IEntityMetadataProvider _MetadataProvider;
+
         #region Public-Members
         
         #endregion
@@ -32,9 +35,11 @@
         /// </summary>
         /// <param name="columnMappings">A dictionary mapping property names to their corresponding database column names and PropertyInfo objects.</param>
         /// <param name="sanitizer">The sanitizer to use for value formatting and SQL injection prevention. Defaults to SqliteSanitizer if null.</param>
+        /// <param name="metadataProvider">The entity metadata provider. Uses <see cref="DurableConfiguration.DefaultMetadataProvider"/> if null.</param>
         /// <exception cref="ArgumentNullException">Thrown when columnMappings is null.</exception>
-        public ExpressionParser(Dictionary<string, PropertyInfo> columnMappings, ISanitizer sanitizer = null)
+        public ExpressionParser(Dictionary<string, PropertyInfo> columnMappings, ISanitizer sanitizer = null, IEntityMetadataProvider? metadataProvider = null)
         {
+            _MetadataProvider = metadataProvider ?? DurableConfiguration.DefaultMetadataProvider;
             _ColumnMappings = columnMappings;
             _Sanitizer = sanitizer ?? new SqliteSanitizer();
         }

@@ -4,6 +4,7 @@ namespace Durable.Sqlite
     using System.Collections.Generic;
     using System.Linq;
     using System.Reflection;
+    using Durable.Metadata;
 
     /// <summary>
     /// Processes Include expressions and builds navigation property metadata for SQLite queries.
@@ -20,6 +21,7 @@ namespace Durable.Sqlite
         private readonly Dictionary<Type, string> _TableNameCache = new Dictionary<Type, string>();
         private readonly Dictionary<Type, Dictionary<string, PropertyInfo>> _ColumnMappingCache = new Dictionary<Type, Dictionary<string, PropertyInfo>>();
         private readonly ISanitizer _Sanitizer;
+        private readonly IEntityMetadataProvider _MetadataProvider;
         private readonly IncludeValidator _IncludeValidator;
         private int _AliasCounter = 0;
 
@@ -31,10 +33,12 @@ namespace Durable.Sqlite
         /// Initializes a new instance of the IncludeProcessor class.
         /// </summary>
         /// <param name="sanitizer">The sanitizer to use for SQL identifiers</param>
+        /// <param name="metadataProvider">The entity metadata provider.</param>
         /// <param name="maxIncludeDepth">Maximum depth for nested includes to prevent infinite recursion. Default is 5</param>
         /// <exception cref="ArgumentNullException">Thrown when sanitizer is null</exception>
-        public IncludeProcessor(ISanitizer sanitizer, int maxIncludeDepth = 5)
+        public IncludeProcessor(ISanitizer sanitizer, IEntityMetadataProvider metadataProvider, int maxIncludeDepth = 5)
         {
+            _MetadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
             _Sanitizer = sanitizer;
             _IncludeValidator = new IncludeValidator(maxIncludeDepth);
         }
@@ -113,7 +117,7 @@ namespace Durable.Sqlite
 
             foreach (PropertyInfo prop in entityType.GetProperties())
             {
-                PropertyAttribute attr = prop.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute attr = _MetadataProvider.GetColumn(prop);
                 if (attr != null)
                 {
                     columnMappings[attr.Name] = prop;
@@ -153,11 +157,11 @@ namespace Durable.Sqlite
             if (isCollection)
             {
                 // Check for many-to-many navigation first
-                ManyToManyNavigationPropertyAttribute m2mNavAttr = navProp.GetCustomAttribute<ManyToManyNavigationPropertyAttribute>();
+                ManyToManyNavigationPropertyAttribute m2mNavAttr = _MetadataProvider.GetManyToMany(navProp);
                 if (m2mNavAttr != null)
                 {
                     // Handle many-to-many relationships
-                    fkProp = entityType.GetProperties().FirstOrDefault(p => p.GetCustomAttribute<PropertyAttribute>()?.Name == "id");
+                    fkProp = entityType.GetProperties().FirstOrDefault(p => _MetadataProvider.GetColumn(p)?.Name == "id");
                     if (fkProp == null)
                     {
                         throw new InvalidOperationException($"Primary key property not found on type '{entityType.Name}'");
@@ -182,7 +186,7 @@ namespace Durable.Sqlite
                 else
                 {
                     // Handle inverse navigation properties (collections)
-                    InverseNavigationPropertyAttribute invNavAttr = navProp.GetCustomAttribute<InverseNavigationPropertyAttribute>();
+                    InverseNavigationPropertyAttribute invNavAttr = _MetadataProvider.GetInverseNavigation(navProp);
                     if (invNavAttr == null)
                     {
                         throw new InvalidOperationException($"Collection property '{propertyName}' on type '{entityType.Name}' must be marked with InverseNavigationPropertyAttribute or ManyToManyNavigationPropertyAttribute");
@@ -195,7 +199,7 @@ namespace Durable.Sqlite
                         throw new InvalidOperationException($"Inverse foreign key property '{invNavAttr.InverseForeignKeyProperty}' not found on type '{relatedType.Name}'");
                     }
 
-                    ForeignKeyAttribute fkAttr = fkProp.GetCustomAttribute<ForeignKeyAttribute>();
+                    ForeignKeyAttribute fkAttr = _MetadataProvider.GetForeignKey(fkProp);
                     if (fkAttr == null)
                     {
                         throw new InvalidOperationException($"Inverse foreign key property '{invNavAttr.InverseForeignKeyProperty}' is not marked with ForeignKeyAttribute");
@@ -205,7 +209,7 @@ namespace Durable.Sqlite
             else
             {
                 // Handle regular navigation properties (single entities)
-                NavigationPropertyAttribute navAttr = navProp.GetCustomAttribute<NavigationPropertyAttribute>();
+                NavigationPropertyAttribute navAttr = _MetadataProvider.GetNavigation(navProp);
                 if (navAttr == null)
                 {
                     throw new InvalidOperationException($"Property '{propertyName}' on type '{entityType.Name}' must be marked with NavigationPropertyAttribute");
@@ -217,7 +221,7 @@ namespace Durable.Sqlite
                     throw new InvalidOperationException($"Foreign key property '{navAttr.ForeignKeyProperty}' not found on type '{entityType.Name}'");
                 }
 
-                ForeignKeyAttribute fkAttr = fkProp.GetCustomAttribute<ForeignKeyAttribute>();
+                ForeignKeyAttribute fkAttr = _MetadataProvider.GetForeignKey(fkProp);
                 if (fkAttr == null)
                 {
                     throw new InvalidOperationException($"Foreign key property '{navAttr.ForeignKeyProperty}' is not marked with ForeignKeyAttribute");
@@ -247,7 +251,7 @@ namespace Durable.Sqlite
                 return _TableNameCache[entityType];
             }
 
-            EntityAttribute entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null)
             {
                 throw new InvalidOperationException($"Type {entityType.Name} must have an Entity attribute");

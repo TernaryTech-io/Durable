@@ -7,6 +7,7 @@ namespace Durable.Sqlite
     using System.Linq;
     using System.Reflection;
     using System.Text;
+    using Durable.Metadata;
 
     /// <summary>
     /// Maps SQLite query results to entity objects, handling joined tables and related entities.
@@ -15,6 +16,8 @@ namespace Durable.Sqlite
     /// <typeparam name="T">The primary entity type being mapped</typeparam>
     internal class EntityMapper<T> where T : class, new()
     {
+        private readonly IEntityMetadataProvider _MetadataProvider;
+
         #region Public-Members
 
         #endregion
@@ -34,11 +37,14 @@ namespace Durable.Sqlite
         /// </summary>
         /// <param name="dataTypeConverter">The data type converter for database values</param>
         /// <param name="baseColumnMappings">The column mappings for the primary entity</param>
+        /// <param name="metadataProvider">The entity metadata provider.</param>
         /// <exception cref="ArgumentNullException">Thrown when required parameters are null</exception>
         public EntityMapper(
             IDataTypeConverter dataTypeConverter,
-            Dictionary<string, PropertyInfo> baseColumnMappings)
+            Dictionary<string, PropertyInfo> baseColumnMappings,
+            IEntityMetadataProvider metadataProvider)
         {
+            _MetadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
             _DataTypeConverter = dataTypeConverter;
             _BaseColumnMappings = baseColumnMappings;
             _ProcessedEntities = new Dictionary<string, HashSet<object>>();
@@ -213,7 +219,7 @@ namespace Durable.Sqlite
         {
             foreach (KeyValuePair<string, PropertyInfo> kvp in _BaseColumnMappings)
             {
-                PropertyAttribute attr = kvp.Value.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute attr = _MetadataProvider.GetColumn(kvp.Value);
                 if (attr != null && (attr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey)
                 {
                     return kvp.Value.GetValue(entity);

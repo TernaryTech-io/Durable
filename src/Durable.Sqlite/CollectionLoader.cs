@@ -7,6 +7,7 @@ namespace Durable.Sqlite
     using System.Linq;
     using System.Reflection;
     using System.Text;
+    using Durable.Metadata;
 
     /// <summary>
     /// Handles loading of collection navigation properties for SQLite entities.
@@ -15,6 +16,8 @@ namespace Durable.Sqlite
     /// <typeparam name="T">The entity type that contains collection navigation properties</typeparam>
     internal class CollectionLoader<T> where T : class, new()
     {
+        private readonly IEntityMetadataProvider _MetadataProvider;
+
         #region Public-Members
 
         #endregion
@@ -33,9 +36,11 @@ namespace Durable.Sqlite
         /// </summary>
         /// <param name="sanitizer">The sanitizer for SQL identifiers</param>
         /// <param name="dataTypeConverter">The data type converter for database values</param>
+        /// <param name="metadataProvider">The entity metadata provider.</param>
         /// <exception cref="ArgumentNullException">Thrown when sanitizer or dataTypeConverter is null</exception>
-        public CollectionLoader(ISanitizer sanitizer, IDataTypeConverter dataTypeConverter)
+        public CollectionLoader(ISanitizer sanitizer, IDataTypeConverter dataTypeConverter, IEntityMetadataProvider metadataProvider)
         {
+            _MetadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
             _Sanitizer = sanitizer;
             _DataTypeConverter = dataTypeConverter;
         }
@@ -147,7 +152,7 @@ namespace Durable.Sqlite
             {
                 // Handle one-to-many relationships
                 PropertyInfo foreignKeyPropInRelated = GetForeignKeyPropertyInRelatedType(collectionItemType, typeof(T));
-                PropertyAttribute fkAttr = foreignKeyPropInRelated.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute fkAttr = _MetadataProvider.GetColumn(foreignKeyPropInRelated);
                 string fkColumnName = fkAttr?.Name ?? foreignKeyPropInRelated.Name;
 
                 StringBuilder sql = new StringBuilder();
@@ -168,7 +173,7 @@ namespace Durable.Sqlite
             Type collectionItemType,
             string relatedTableName)
         {
-            ManyToManyNavigationPropertyAttribute m2mAttr = include.NavigationProperty.GetCustomAttribute<ManyToManyNavigationPropertyAttribute>();
+            ManyToManyNavigationPropertyAttribute m2mAttr = _MetadataProvider.GetManyToMany(include.NavigationProperty);
             if (m2mAttr == null)
             {
                 throw new InvalidOperationException($"ManyToManyNavigationPropertyAttribute not found for {include.PropertyPath}");
@@ -178,8 +183,8 @@ namespace Durable.Sqlite
             PropertyInfo thisEntityFkProp = m2mAttr.JunctionEntityType.GetProperty(m2mAttr.ThisEntityForeignKeyProperty);
             PropertyInfo relatedEntityFkProp = m2mAttr.JunctionEntityType.GetProperty(m2mAttr.RelatedEntityForeignKeyProperty);
             
-            PropertyAttribute thisEntityFkAttr = thisEntityFkProp.GetCustomAttribute<PropertyAttribute>();
-            PropertyAttribute relatedEntityFkAttr = relatedEntityFkProp.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute thisEntityFkAttr = _MetadataProvider.GetColumn(thisEntityFkProp);
+            PropertyAttribute relatedEntityFkAttr = _MetadataProvider.GetColumn(relatedEntityFkProp);
             
             string thisEntityFkColumn = thisEntityFkAttr?.Name ?? thisEntityFkProp.Name;
             string relatedEntityFkColumn = relatedEntityFkAttr?.Name ?? relatedEntityFkProp.Name;
@@ -341,11 +346,11 @@ namespace Durable.Sqlite
             string thisEntityFkColumn,
             Dictionary<object, List<object>> relatedItemsByKey)
         {
-            ManyToManyNavigationPropertyAttribute m2mAttr = include.NavigationProperty.GetCustomAttribute<ManyToManyNavigationPropertyAttribute>();
+            ManyToManyNavigationPropertyAttribute m2mAttr = _MetadataProvider.GetManyToMany(include.NavigationProperty);
             string relatedTableName = GetTableName(collectionItemType);
             
             PropertyInfo relatedEntityFkProp = m2mAttr.JunctionEntityType.GetProperty(m2mAttr.RelatedEntityForeignKeyProperty);
-            PropertyAttribute relatedEntityFkAttr = relatedEntityFkProp.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute relatedEntityFkAttr = _MetadataProvider.GetColumn(relatedEntityFkProp);
             string relatedEntityFkColumn = relatedEntityFkAttr?.Name ?? relatedEntityFkProp.Name;
             
             string relatedPkColumn = GetPrimaryKeyColumnName(collectionItemType);
@@ -385,7 +390,7 @@ namespace Durable.Sqlite
         {
             foreach (PropertyInfo prop in entityType.GetProperties())
             {
-                PropertyAttribute attr = prop.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute attr = _MetadataProvider.GetColumn(prop);
                 if (attr != null && (attr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey)
                 {
                     return attr.Name;
@@ -411,7 +416,7 @@ namespace Durable.Sqlite
             Type collectionItemType = include.NavigationProperty.PropertyType.GetGenericArguments()[0];
             string relatedTableName = GetTableName(collectionItemType);
             PropertyInfo foreignKeyPropInRelated = GetForeignKeyPropertyInRelatedType(collectionItemType, entityType);
-            PropertyAttribute fkAttr = foreignKeyPropInRelated.GetCustomAttribute<PropertyAttribute>();
+            PropertyAttribute fkAttr = _MetadataProvider.GetColumn(foreignKeyPropInRelated);
             string fkColumnName = fkAttr?.Name ?? foreignKeyPropInRelated.Name;
 
             StringBuilder sql = new StringBuilder();
@@ -473,7 +478,7 @@ namespace Durable.Sqlite
         {
             foreach (PropertyInfo prop in entityType.GetProperties())
             {
-                PropertyAttribute attr = prop.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute attr = _MetadataProvider.GetColumn(prop);
                 if (attr != null && (attr.PropertyFlags & Flags.PrimaryKey) == Flags.PrimaryKey)
                 {
                     return prop;
@@ -486,7 +491,7 @@ namespace Durable.Sqlite
         {
             foreach (PropertyInfo prop in relatedType.GetProperties())
             {
-                ForeignKeyAttribute fkAttr = prop.GetCustomAttribute<ForeignKeyAttribute>();
+                ForeignKeyAttribute fkAttr = _MetadataProvider.GetForeignKey(prop);
                 if (fkAttr != null && fkAttr.ReferencedType == referencingType)
                 {
                     return prop;
@@ -497,7 +502,7 @@ namespace Durable.Sqlite
 
         private string GetTableName(Type entityType)
         {
-            EntityAttribute entityAttr = entityType.GetCustomAttribute<EntityAttribute>();
+            EntityAttribute entityAttr = _MetadataProvider.GetEntity(entityType);
             if (entityAttr == null)
             {
                 throw new InvalidOperationException($"Type {entityType.Name} must have an Entity attribute");
@@ -511,7 +516,7 @@ namespace Durable.Sqlite
 
             foreach (PropertyInfo prop in targetType.GetProperties())
             {
-                PropertyAttribute attr = prop.GetCustomAttribute<PropertyAttribute>();
+                PropertyAttribute attr = _MetadataProvider.GetColumn(prop);
                 if (attr != null)
                 {
                     try
