@@ -302,13 +302,19 @@ namespace Durable.MySql
 
             // Build the two-step JOIN for many-to-many
             // First join to junction table, then to target table
-            string parentPrimaryKey = GetPrimaryKeyColumn(typeof(object)); // This would need proper parent type resolution
+            if (string.IsNullOrEmpty(include.JunctionParentKeyColumn) || string.IsNullOrEmpty(include.JunctionTargetKeyColumn))
+            {
+                throw new InvalidOperationException($"Many-to-many relationship for {include.PropertyPath} requires junction foreign key columns");
+            }
+
+            Type parentEntityType = include.Parent?.RelatedEntityType ?? baseEntityType;
+            string parentPrimaryKey = GetPrimaryKeyColumn(parentEntityType);
             string relatedPrimaryKey = GetPrimaryKeyColumn(include.RelatedEntityType);
 
             joinBuilder.AppendLine();
-            joinBuilder.Append($"LEFT JOIN {sanitizedJunctionTable} {sanitizedJunctionAlias} ON {parentAlias}.{_Sanitizer.SanitizeIdentifier(parentPrimaryKey)} = {sanitizedJunctionAlias}.{parentAlias}_id");
+            joinBuilder.Append($"LEFT JOIN {sanitizedJunctionTable} {sanitizedJunctionAlias} ON {parentAlias}.{_Sanitizer.SanitizeIdentifier(parentPrimaryKey)} = {sanitizedJunctionAlias}.{_Sanitizer.SanitizeIdentifier(include.JunctionParentKeyColumn)}");
             joinBuilder.AppendLine();
-            joinBuilder.Append($"LEFT JOIN {sanitizedRelatedTable} {sanitizedJoinAlias} ON {sanitizedJunctionAlias}.{include.JoinAlias}_id = {sanitizedJoinAlias}.{_Sanitizer.SanitizeIdentifier(relatedPrimaryKey)}");
+            joinBuilder.Append($"LEFT JOIN {sanitizedRelatedTable} {sanitizedJoinAlias} ON {sanitizedJunctionAlias}.{_Sanitizer.SanitizeIdentifier(include.JunctionTargetKeyColumn)} = {sanitizedJoinAlias}.{_Sanitizer.SanitizeIdentifier(relatedPrimaryKey)}");
         }
 
         private string GetColumnNameForProperty(PropertyInfo property)

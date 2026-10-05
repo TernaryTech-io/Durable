@@ -1039,6 +1039,11 @@
             <exception cref="T:System.ArgumentNullException">Thrown when entityType is null</exception>
             <exception cref="T:System.InvalidOperationException">Thrown when the entity type does not have an EntityAttribute</exception>
         </member>
+        <member name="M:Durable.Postgres.PostgresIncludeProcessor.GetJunctionColumnName(System.Type,System.String)">
+            <summary>
+            Resolves a junction entity property name to its mapped column name.
+            </summary>
+        </member>
         <member name="T:Durable.Postgres.PostgresIncludeValidator">
             <summary>
             Validates Include expressions to prevent common errors and security issues in PostgreSQL queries.

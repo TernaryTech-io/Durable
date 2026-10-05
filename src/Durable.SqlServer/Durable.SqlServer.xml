@@ -901,6 +901,16 @@
             Gets or sets the SQL alias for the junction table in many-to-many scenarios.
             </summary>
         </member>
+        <member name="P:Durable.SqlServer.SqlServerIncludeInfo.JunctionParentKeyColumn">
+            <summary>
+            Gets or sets the junction table column referencing the parent entity in many-to-many scenarios.
+            </summary>
+        </member>
+        <member name="P:Durable.SqlServer.SqlServerIncludeInfo.JunctionTargetKeyColumn">
+            <summary>
+            Gets or sets the junction table column referencing the related entity in many-to-many scenarios.
+            </summary>
+        </member>
         <member name="M:Durable.SqlServer.SqlServerIncludeInfo.#ctor">
             <summary>
             Initializes a new instance of the SqlServerIncludeInfo class.
@@ -953,6 +963,11 @@
             <returns>The database table name</returns>
             <exception cref="T:System.ArgumentNullException">Thrown when entityType is null</exception>
             <exception cref="T:System.InvalidOperationException">Thrown when the entity type doesn't have an EntityAttribute</exception>
+        </member>
+        <member name="M:Durable.SqlServer.SqlServerIncludeProcessor.GetJunctionColumnName(System.Type,System.String)">
+            <summary>
+            Resolves a junction entity property name to its mapped column name.
+            </summary>
         </member>
         <member name="T:Durable.SqlServer.SqlServerIncludeValidator">
             <summary>

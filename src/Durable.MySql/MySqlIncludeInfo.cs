@@ -82,6 +82,16 @@ namespace Durable.MySql
         /// </summary>
         public string? JunctionAlias { get; set; }
 
+        /// <summary>
+        /// Gets or sets the junction table column referencing the parent entity in many-to-many scenarios.
+        /// </summary>
+        public string? JunctionParentKeyColumn { get; set; }
+
+        /// <summary>
+        /// Gets or sets the junction table column referencing the related entity in many-to-many scenarios.
+        /// </summary>
+        public string? JunctionTargetKeyColumn { get; set; }
+
         #endregion
 
         #region Private-Members

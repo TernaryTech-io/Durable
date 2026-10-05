@@ -171,6 +171,17 @@ namespace Durable.SqlServer
 
         #region Private-Methods
 
+        /// <summary>
+        /// Resolves a junction entity property name to its mapped column name.
+        /// </summary>
+        private string GetJunctionColumnName(Type junctionEntityType, string propertyName)
+        {
+            PropertyInfo? property = junctionEntityType.GetProperty(propertyName);
+            if (property == null)
+                return propertyName;
+            return _MetadataProvider.GetColumn(property)?.Name ?? propertyName;
+        }
+
         private SqlServerIncludeInfo CreateIncludeInfo(Type parentType, string propertyName, string fullPath, SqlServerIncludeInfo? parent)
         {
             PropertyInfo? navigationProperty = parentType.GetProperty(propertyName);
@@ -229,6 +240,8 @@ namespace Durable.SqlServer
                     includeInfo.JunctionTableName = GetTableName(manyToManyAttr.JunctionEntityType);
                     includeInfo.JunctionSchema = _MetadataProvider.GetEntityMetadata(manyToManyAttr.JunctionEntityType).Schema;
                     includeInfo.JunctionAlias = GenerateAlias();
+                    includeInfo.JunctionParentKeyColumn = GetJunctionColumnName(manyToManyAttr.JunctionEntityType, manyToManyAttr.ThisEntityForeignKeyProperty);
+                    includeInfo.JunctionTargetKeyColumn = GetJunctionColumnName(manyToManyAttr.JunctionEntityType, manyToManyAttr.RelatedEntityForeignKeyProperty);
                 }
             }
 

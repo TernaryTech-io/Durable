@@ -245,8 +245,8 @@ namespace Durable.Postgres
                     includeInfo.JunctionTableName = GetTableName(includeInfo.JunctionEntityType);
                     includeInfo.JunctionSchema = _MetadataProvider.GetEntityMetadata(includeInfo.JunctionEntityType).Schema;
                     includeInfo.JunctionAlias = GenerateAlias();
-                    includeInfo.JunctionParentKeyColumn = manyToManyAttr.ThisEntityForeignKeyProperty;
-                    includeInfo.JunctionTargetKeyColumn = manyToManyAttr.RelatedEntityForeignKeyProperty;
+                    includeInfo.JunctionParentKeyColumn = GetJunctionColumnName(includeInfo.JunctionEntityType, manyToManyAttr.ThisEntityForeignKeyProperty);
+                    includeInfo.JunctionTargetKeyColumn = GetJunctionColumnName(includeInfo.JunctionEntityType, manyToManyAttr.RelatedEntityForeignKeyProperty);
                 }
             }
 
@@ -322,6 +322,17 @@ namespace Durable.Postgres
 
             // Default to "id" if no primary key is found
             return "id";
+        }
+
+        /// <summary>
+        /// Resolves a junction entity property name to its mapped column name.
+        /// </summary>
+        private string GetJunctionColumnName(Type junctionEntityType, string propertyName)
+        {
+            PropertyInfo? property = junctionEntityType.GetProperty(propertyName);
+            if (property == null)
+                return propertyName;
+            return _MetadataProvider.GetColumn(property)?.Name ?? propertyName;
         }
 
         private string GetColumnName(PropertyInfo property)
