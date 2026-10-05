@@ -121,6 +121,12 @@ namespace Durable
             }
 
             // Array and Collection handling - serialize to JSON
+            // Byte array handling - bind directly as binary
+            if (valueType == typeof(byte[]))
+            {
+                return value;
+            }
+
             if (valueType.IsArray || (valueType.IsGenericType && 
                 (typeof(IEnumerable).IsAssignableFrom(valueType) && valueType != typeof(string))))
             {
@@ -270,6 +276,12 @@ namespace Durable
             }
 
             // Array and Collection handling - deserialize from JSON
+            // Byte array handling - binary columns are returned as byte[]
+            if (targetType == typeof(byte[]) && value is byte[])
+            {
+                return value;
+            }
+
             if (targetType.IsArray || (targetType.IsGenericType && 
                 (typeof(IEnumerable).IsAssignableFrom(targetType) && targetType != typeof(string))))
             {
@@ -351,6 +363,8 @@ namespace Durable
                     return "INTEGER";
                 return "TEXT";
             }
+            if (type == typeof(byte[]))
+                return "BLOB";
             if (type.IsArray || (type.IsGenericType && typeof(IEnumerable).IsAssignableFrom(type)))
                 return "TEXT";
             

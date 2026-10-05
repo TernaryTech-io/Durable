@@ -128,6 +128,12 @@ namespace Durable.MySql
             }
 
             // Array and Collection handling - serialize to JSON for MySQL JSON type
+            // Byte array handling - bind directly as binary
+            if (valueType == typeof(byte[]))
+            {
+                return value;
+            }
+
             if (valueType.IsArray || (valueType.IsGenericType &&
                 (typeof(IEnumerable).IsAssignableFrom(valueType) && valueType != typeof(string))))
             {
@@ -341,6 +347,12 @@ namespace Durable.MySql
             }
 
             // Array and Collection handling - deserialize from MySQL JSON column
+            // Byte array handling - binary columns are returned as byte[]
+            if (targetType == typeof(byte[]) && value is byte[])
+            {
+                return value;
+            }
+
             if (targetType.IsArray || (targetType.IsGenericType &&
                 (typeof(IEnumerable).IsAssignableFrom(targetType) && targetType != typeof(string))))
             {
@@ -445,6 +457,8 @@ namespace Durable.MySql
                 // Use VARCHAR instead of ENUM to avoid MySQL ENUM limitations
                 return "VARCHAR(255)";
             }
+            if (type == typeof(byte[]))
+                return "LONGBLOB";
             if (type.IsArray || (type.IsGenericType && typeof(IEnumerable).IsAssignableFrom(type)))
                 return "JSON"; // MySQL 5.7+ JSON column type
 

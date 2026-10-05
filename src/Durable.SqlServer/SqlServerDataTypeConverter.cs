@@ -125,6 +125,12 @@ namespace Durable.SqlServer
             }
 
             // Array and Collection handling - serialize to JSON for SQL Server nvarchar(max)
+            // Byte array handling - bind directly as binary
+            if (valueType == typeof(byte[]))
+            {
+                return value;
+            }
+
             if (valueType.IsArray || (valueType.IsGenericType &&
                 (typeof(IEnumerable).IsAssignableFrom(valueType) && valueType != typeof(string))))
             {
@@ -286,6 +292,12 @@ namespace Durable.SqlServer
             }
 
             // Array and Collection handling - deserialize from JSON
+            // Byte array handling - binary columns are returned as byte[]
+            if (targetType == typeof(byte[]) && value is byte[])
+            {
+                return value;
+            }
+
             if (targetType.IsArray || (targetType.IsGenericType &&
                 (typeof(IEnumerable).IsAssignableFrom(targetType) && targetType != typeof(string))))
             {
