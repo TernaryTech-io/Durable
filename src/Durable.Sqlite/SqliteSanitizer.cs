@@ -149,6 +149,7 @@ namespace Durable.Sqlite
                 DateTimeOffset dto => SanitizeString(dto.ToString("yyyy-MM-dd HH:mm:ss.fffffff", CultureInfo.InvariantCulture)),
                 TimeSpan ts => SanitizeString(ts.ToString()),
                 char c => SanitizeString(c.ToString()),
+                byte[] bytes => "X'" + Convert.ToHexString(bytes) + "'", // hex literal for BLOB columns
                 _ when !RequiresSanitization(value) => value.ToString(),
                 _ => SanitizeString(value.ToString())
             };
